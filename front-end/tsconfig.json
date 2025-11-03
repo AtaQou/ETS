@@ -1,0 +1,27 @@
+{
+    "include": [
+        "src/**/*.ts",
+        "src/**/*.tsx"
+    ],
+    "exclude": [
+        "node_modules"
+    ],
+    "compilerOptions": {
+        "target": "es6",
+        "module": "commonjs",
+        "jsx": "react", // Enable JSX
+        "strict": true,
+        "allowJs": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "outDir": "./dist",
+        "baseUrl": "./src", // Base directory to resolve non-relative module names.
+        "paths": {
+            // Optionally, map your import paths
+            "*": [
+                "*",
+                "types/*"
+            ]
+        }
+    }
+}
