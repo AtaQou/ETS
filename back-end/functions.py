@@ -3,7 +3,7 @@ import nltk
 import websockets
 import pytesseract
 from PIL import Image
-#import tobii_research as tr
+import tobii_research as tr
 from config import load_config
 from flask import make_response
 from nltk.corpus import stopwords
