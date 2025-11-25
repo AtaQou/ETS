@@ -11,18 +11,26 @@ const WordBoxesOverlay: React.FC = () => {
     const { zoom } = userSettingsApi;
     const { wordPositions } = useWordPositions();
 
-    // Παίρνουμε μόνο τα data της τρέχουσας σελίδας
     const currentPageData = useCurrentPageData(wordPositions, currentPage);
 
     const boxes = useMemo(() => {
         if (!currentPageData || !currentPageData.data) return [];
 
-        return currentPageData.data.map((item, index) => {
+        return currentPageData.data.map((item: any, index: number) => {
+            //  ΠΡΙΝ: περνούσαμε το zoom που έχει ήδη χρησιμοποιηθεί στο back-end
+            // const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
+            //   item.box,
+            //   scrollTop,
+            //   currentPage,
+            //   zoom
+            // );
+
+            // ✅ ΤΩΡΑ: δεν κάνουμε άλλο scale με zoom στο front-end
             const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
                 item.box,
                 scrollTop,
                 currentPage,
-                zoom
+                1 // χρησιμοποιούμε 1.0 για να μην ξανα-σκέιλάρουμε τα boxes
             );
 
             return {
@@ -46,7 +54,7 @@ const WordBoxesOverlay: React.FC = () => {
                 position: "fixed",
                 inset: 0,
                 pointerEvents: "none",
-                zIndex: 50, // πάνω από το PDF, κάτω από fullscreen overlays
+                zIndex: 50,
             }}
         >
             {boxes.map((box) => (
@@ -63,21 +71,8 @@ const WordBoxesOverlay: React.FC = () => {
                         boxSizing: "border-box",
                         backgroundColor: "rgba(255, 0, 0, 0.15)",
                         pointerEvents: "none",
-                        fontSize: "8px",
-                        color: "red",
                     }}
-                >
-                    {/* Μικρή ετικέτα με τη λέξη για debugging */}
-                    {/* <span
-            style={{
-              background: "rgba(0,0,0,0.6)",
-              color: "#fff",
-              fontSize: "8px",
-            }}
-          >
-            {box.word}
-          </span> */}
-                </div>
+                />
             ))}
         </div>
     );

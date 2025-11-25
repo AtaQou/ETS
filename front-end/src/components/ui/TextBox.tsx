@@ -15,7 +15,7 @@ import useEyeTracking from "../../hooks/useEyeTracking";
 import usePrevious from "hooks/usePrevious";
 
 const wordPadding = 20;
-const apiKey = "AIzaSyAX5ypZhaH0PNJfya3tSGVfQLN49_o3u3U";
+const apiKey = "AIzaSyAxw5JhyHdllTP-E2dlrnsJX4ugkyuq1PY";
 const testWord = "pathological";
 
 const TextBox = () => {
