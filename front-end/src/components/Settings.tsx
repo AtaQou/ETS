@@ -13,7 +13,7 @@ import { IContextProps, IUserSettings } from "types/AppTypes";
 const Settings: FC = () => {
     const { userSettingsUi, setUserSettingsUi, userSettingsApi } =
         useContext<IContextProps>(Context);
-    const { zoom, theme, language } = userSettingsUi;
+    const { zoom, theme, language, showBoxes = false } = userSettingsUi;
     const [loading, setLoading] = useState(false);
     const isDarkTheme = userSettingsApi.theme === "dark";
 
@@ -86,7 +86,7 @@ const Settings: FC = () => {
                             }
                             className='slider text-gray-900 p-1 h-10 rounded border border-gray-300'
                         />
-                        {/* ΝΕΟ: αριθμητικό input για άμεση εισαγωγή zoom */}
+                        {/* numeric input για ακριβές zoom */}
                         <input
                             type='number'
                             min={10}
@@ -164,6 +164,24 @@ const Settings: FC = () => {
                         ))}
                     </select>
                 </div>
+
+                {/* Show word boxes (debug) */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Show word boxes (debug)
+                    </label>
+                    <input
+                        type='checkbox'
+                        checked={!!showBoxes}
+                        onChange={(e) =>
+                            handleSettingsChange("showBoxes", e.target.checked as any)
+                        }
+                    />
+                </div>
+
                 <div className='flex justify-end py-2'></div>
             </div>
         </div>

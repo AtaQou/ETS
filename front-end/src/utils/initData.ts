@@ -1,13 +1,20 @@
+import { IUserSettings } from "types/AppTypes";
+
 export const initUserInfo = {
   isLoggedIn: false,
   userID: "",
   username: "",
 };
 
-export const initSettings = {};
-
 export const initEyeTracker = {
   device_name: "",
+};
+
+export const initSettings: IUserSettings = {
+    zoom: 0.84,
+    theme: "dark",
+    language: "en",
+    showBoxes: false, // νέο default
 };
 
 export const initPdfDimensions = {

@@ -4,12 +4,15 @@ import { useWordPositions } from "hooks/useWordPositions";
 import useCurrentPageData from "hooks/useCurrentPageData";
 import { calculateScaledPositions } from "utils/functions";
 
-const DEBUG_SHOW_BOXES = true;
+const DEBUG_SHOW_BOXES = false;
 
 const WordBoxesOverlay: React.FC = () => {
-    const { currentPage, scrollTop, userSettingsApi, file } = useContext(Context);
+    const { currentPage, scrollTop, userSettingsApi, userSettingsUi, file } =
+        useContext(Context);
     const { zoom } = userSettingsApi;
     const { wordPositions } = useWordPositions();
+
+    const showBoxes = userSettingsUi.showBoxes ?? DEBUG_SHOW_BOXES;
 
     const currentPageData = useCurrentPageData(wordPositions, currentPage);
 
@@ -17,20 +20,11 @@ const WordBoxesOverlay: React.FC = () => {
         if (!currentPageData || !currentPageData.data) return [];
 
         return currentPageData.data.map((item: any, index: number) => {
-            //  ΠΡΙΝ: περνούσαμε το zoom που έχει ήδη χρησιμοποιηθεί στο back-end
-            // const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
-            //   item.box,
-            //   scrollTop,
-            //   currentPage,
-            //   zoom
-            // );
-
-            // ✅ ΤΩΡΑ: δεν κάνουμε άλλο scale με zoom στο front-end
             const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
                 item.box,
                 scrollTop,
                 currentPage,
-                1 // χρησιμοποιούμε 1.0 για να μην ξανα-σκέιλάρουμε τα boxes
+                1 // ΔΕΝ ξανα-σκέιλάρουμε με zoom στο front-end
             );
 
             return {
@@ -44,7 +38,7 @@ const WordBoxesOverlay: React.FC = () => {
         });
     }, [currentPageData, scrollTop, currentPage, zoom]);
 
-    if (!DEBUG_SHOW_BOXES || !file || file.size === 0 || boxes.length === 0) {
+    if (!showBoxes || !file || file.size === 0 || boxes.length === 0) {
         return null;
     }
 
