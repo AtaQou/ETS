@@ -75,9 +75,9 @@ terminado==0.17.1
 tinycss2==1.2.1
 tobii-research==1.11.0
 tomli==2.0.1
-torch==1.13.1
-torchaudio==0.13.1+cu117
-torchvision==0.14.1+cu117
+#torch==1.13.1
+#torchaudio==0.13.1+cu117
+#torchvision==0.14.1+cu117
 tornado==6.2
 tqdm==4.66.1
 traitlets==5.8.0
