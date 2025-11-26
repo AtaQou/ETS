@@ -79,10 +79,12 @@ export interface IUserInfo {
 }
 
 export interface IUserSettings {
-  language: string;
-  theme: string;
-  zoom: number;
+    zoom: number;
+    theme: string;
+    language: string;
+    showBoxes?: boolean; // νέο, optional για να μην σπάσει παλιό state
 }
+
 
 export interface IEyeTracker {
   device_name: string;

@@ -70,11 +70,17 @@ def upload_file(file, user_id):
         }
         return jsonify(response), 400
 
-    new_id = str(uuid.uuid4())
+    # Make sure user_id is an integer
+    user_id = int(user_id)
+
+    # Insert without docID; SQLite will auto-assign it
     c.execute("""
-        INSERT INTO documents(docID, userID, docName, docFile, uploadDate, lastReadPage)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (new_id, user_id, filename, file_data, upload_date, 0))
+              INSERT INTO documents(userID, docName, docFile, uploadDate, lastReadPage)
+              VALUES (?, ?, ?, ?, ?)
+              """, (user_id, filename, file_data, upload_date, 0))
+
+    # Get the auto-incremented docID
+    new_id = c.lastrowid
     conn.commit()
     conn.close()
 
@@ -147,7 +153,7 @@ def get_file():
 @app.route('/api/upload_file', methods=['POST'])
 def parse_file():
     print(request.form)  # Debugging line
-    user_id = request.form.get('userID', default=1)
+    user_id = int(request.form.get('userID', 1))
     if 'file' not in request.files:
         return "No file part", 400
     file = request.files['file']
@@ -358,11 +364,15 @@ def create_profile():
 
     password = generate_password_hash(data['password'], method='sha256')
 
-    cursor.execute("INSERT INTO users (userID, username, password) VALUES (?, ?, ?)",
-                   (str(uuid.uuid4()), username, password))
+    # Insert without userID; SQLite will auto-assign it
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)",
+                   (username, password))
     conn.commit()
 
-    return jsonify({'message': 'New user created.'}), 200
+    # Get the auto-generated userID if needed
+    user_id = cursor.lastrowid
+
+    return jsonify({'message': 'New user created.', 'userID': user_id}), 200
 
 
 @app.route('/api/login', methods=['POST', 'OPTIONS'])
@@ -450,4 +460,5 @@ def get_user_settings():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=listening_port, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
+
