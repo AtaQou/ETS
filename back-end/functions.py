@@ -61,18 +61,20 @@ def process_page(page_image):
 
     for word, confidence, box in zip(words, confidences, boxes):
         if int(confidence) > 30:
-            # Remove numbers, symbols, and punctuation
-            cleaned_word = re.sub(r'[^a-zA-Z\s]', '', word)
+            # Use a cleaned version of the token for filtering only, but keep punctuation
+            # (e.g., periods or question marks) in the returned word so sentence
+            # reconstruction from positions remains possible.
+            filtered_word = re.sub(r'[^a-zA-Z]', '', word)
 
             # Filter words based on length, stop words, acronyms, URLs, and email addresses
-            if (len(cleaned_word) > 2 and
-                    cleaned_word.lower() not in stop_words and
-                    not re.match(r'\b[A-Z]{2,}\b', cleaned_word) and
-                    not re.match(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', cleaned_word) and
-                    not re.match(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', cleaned_word)):
+            if (len(filtered_word) > 2 and
+                    filtered_word.lower() not in stop_words and
+                    not re.match(r'\b[A-Z]{2,}\b', filtered_word) and
+                    not re.match(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', filtered_word) and
+                    not re.match(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', filtered_word)):
 
                 words_with_positions.append(
-                    {"word": cleaned_word, "confidence": confidence, "box": box}
+                    {"word": word, "confidence": confidence, "box": box}
                 )
 
     return words_with_positions
