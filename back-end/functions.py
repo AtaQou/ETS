@@ -58,9 +58,12 @@ def process_page(page_image):
     words = data['text']
     confidences = data['conf']
     boxes = zip(data['left'], data['top'], data['width'], data['height'])
+    url_pattern = r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
 
     for word, confidence, box in zip(words, confidences, boxes):
         if int(confidence) > 30:
+            left, top, width, height = (int(coord) for coord in box)
             # Use a cleaned version of the token for filtering only, but keep punctuation
             # (e.g., periods or question marks) in the returned word so sentence
             # reconstruction from positions remains possible.
@@ -70,11 +73,11 @@ def process_page(page_image):
             if (len(filtered_word) > 2 and
                     filtered_word.lower() not in stop_words and
                     not re.match(r'\b[A-Z]{2,}\b', filtered_word) and
-                    not re.match(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', filtered_word) and
-                    not re.match(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', filtered_word)):
+                    not re.match(url_pattern, word) and
+                    not re.match(email_pattern, word)):
 
                 words_with_positions.append(
-                    {"word": word, "confidence": confidence, "box": box}
+                    {"word": word, "confidence": confidence, "box": (left, top, width, height)}
                 )
 
     return words_with_positions
