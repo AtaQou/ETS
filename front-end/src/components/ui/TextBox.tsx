@@ -25,6 +25,7 @@ const TextBox = () => {
     currentPage,
     shouldTranslate,
     setShouldTranslate,
+    userSettingsUi,
   } = useContext<IContextProps>(Context);
   const prevScrollTop = usePrevious(scrollTop);
 
@@ -83,7 +84,7 @@ const TextBox = () => {
   }, [currentPage, currentPageData, pageMounted, scrollTop]);
 
   useEffect(() => {
-    if (coolDown) return;
+    if (coolDown || userSettingsUi.hoverTranslateDebug) return;
     if (
       pageMounted &&
       wordsScreenPositions &&
@@ -115,7 +116,37 @@ const TextBox = () => {
     setShouldTranslate,
     shouldTranslate,
     coolDown,
+    userSettingsUi.hoverTranslateDebug,
   ]);
+
+  useEffect(() => {
+    if (!userSettingsUi.hoverTranslateDebug) return;
+    const handleHover = (event: globalThis.MouseEvent) => {
+      if (!wordsScreenPositions || !wordsScreenPositions.length) return;
+      const hoveredWord = wordsScreenPositions.find((position) => {
+        const { left, top, width, height } = position.wordCoords;
+        return (
+          event.clientX >= left &&
+          event.clientX <= left + width &&
+          event.clientY >= top &&
+          event.clientY <= top + height
+        );
+      });
+
+      if (hoveredWord) {
+        setCurrentWord(hoveredWord);
+        setShouldTranslate?.(true);
+      } else {
+        setCurrentWord(undefined);
+        setShouldTranslate?.(false);
+      }
+    };
+
+    window.addEventListener("mousemove", handleHover);
+    return () => {
+      window.removeEventListener("mousemove", handleHover);
+    };
+  }, [setShouldTranslate, userSettingsUi.hoverTranslateDebug, wordsScreenPositions]);
 
   useEffect(() => {
     const fetchTranslation = async () => {

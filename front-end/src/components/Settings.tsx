@@ -13,7 +13,13 @@ import { IContextProps, IUserSettings } from "types/AppTypes";
 const Settings: FC = () => {
     const { userSettingsUi, setUserSettingsUi, userSettingsApi } =
         useContext<IContextProps>(Context);
-    const { zoom, theme, language, showBoxes = false } = userSettingsUi;
+    const {
+        zoom,
+        theme,
+        language,
+        showBoxes = false,
+        hoverTranslateDebug = false,
+    } = userSettingsUi;
     const [loading, setLoading] = useState(false);
     const isDarkTheme = userSettingsApi.theme === "dark";
 
@@ -178,6 +184,26 @@ const Settings: FC = () => {
                         checked={!!showBoxes}
                         onChange={(e) =>
                             handleSettingsChange("showBoxes", e.target.checked as any)
+                        }
+                    />
+                </div>
+
+                {/* Hover-to-translate (debug) */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Hover translate (debug)
+                    </label>
+                    <input
+                        type='checkbox'
+                        checked={!!hoverTranslateDebug}
+                        onChange={(e) =>
+                            handleSettingsChange(
+                                "hoverTranslateDebug",
+                                e.target.checked as any
+                            )
                         }
                     />
                 </div>

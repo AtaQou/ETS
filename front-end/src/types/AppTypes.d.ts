@@ -83,6 +83,7 @@ export interface IUserSettings {
     theme: string;
     language: string;
     showBoxes?: boolean; // νέο, optional για να μην σπάσει παλιό state
+    hoverTranslateDebug?: boolean;
 }
 
 

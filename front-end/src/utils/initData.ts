@@ -15,6 +15,7 @@ export const initSettings: IUserSettings = {
     theme: "dark",
     language: "en",
     showBoxes: false, // νέο default
+    hoverTranslateDebug: false,
 };
 
 export const initPdfDimensions = {
