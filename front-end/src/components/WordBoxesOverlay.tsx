@@ -29,6 +29,8 @@ const WordBoxesOverlay: React.FC = () => {
             height: currentPageData.height,
         };
 
+        // Use the same scaled coordinates that feed translation/eye-tracking so the
+        // debug overlay reflects the exact bounding boxes the app consumes.
         const mappedBoxes = currentPageData.data.map((item: any, index: number) => {
             const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
                 item.box,
