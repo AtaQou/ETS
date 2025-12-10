@@ -25,7 +25,6 @@ const TextBox = () => {
     pageMounted,
     scrollTop,
     currentPage,
-    userSettingsApi,
     shouldTranslate,
     setShouldTranslate,
   } = useContext<IContextProps>(Context);
@@ -60,9 +59,7 @@ const TextBox = () => {
         const { box, word } = w;
         const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
           box,
-          scrollTop,
-          currentPage,
-          userSettingsApi.zoom
+          currentPage
         );
         return {
           word,
@@ -77,13 +74,7 @@ const TextBox = () => {
       return screenPositions;
     }
     return [];
-  }, [
-    currentPage,
-    currentPageData,
-    pageMounted,
-    scrollTop,
-    userSettingsApi.zoom,
-  ]);
+  }, [currentPage, currentPageData, pageMounted, scrollTop]);
 
   useEffect(() => {
     if (finalPositions) setWordsScreenPositions(finalPositions);
