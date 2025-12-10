@@ -150,10 +150,20 @@ export interface CalibrationPoint {
 
 interface IWordPositionsState {
   wordsLoading: boolean;
-  wordPositions: { data: IWordPositions[]; page: number }[];
+  wordPositions: {
+    data: IWordPositions[];
+    page: number;
+    width?: number;
+    height?: number;
+  }[];
   wordsScreenPositions: IScaledWordCoords[];
   setWordPositions?: (
-    wordPositions: { data: IWordPositions[]; page: number }[]
+    wordPositions: {
+      data: IWordPositions[];
+      page: number;
+      width?: number;
+      height?: number;
+    }[]
   ) => void;
   setWordsScreenPositions?: (wordPositions: IScaledWordCoords[]) => void;
 }

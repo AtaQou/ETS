@@ -17,10 +17,16 @@ const WordBoxesOverlay: React.FC = () => {
     const boxes = useMemo(() => {
         if (!currentPageData || !currentPageData.data) return [];
 
+        const pageSize = {
+            width: currentPageData.width,
+            height: currentPageData.height,
+        };
+
         return currentPageData.data.map((item: any, index: number) => {
             const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
                 item.box,
-                currentPage
+                currentPage,
+                pageSize
             );
 
             return {

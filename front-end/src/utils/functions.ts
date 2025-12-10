@@ -99,7 +99,8 @@ export const saveToFile = (data: Record<string, any>, filename: string) => {
 
 export const calculateScaledPositions = (
   box: number[],
-  currentPage: number
+  currentPage: number,
+  pageSize?: { width?: number; height?: number }
 ): { xPrime: number; yPrime: number; wPrime: number; hPrime: number } => {
   const [x, y, w, h] = box;
   const pageWrapper = document.querySelector(
@@ -119,8 +120,8 @@ export const calculateScaledPositions = (
   const { width: cssWidth, height: cssHeight, left, top } =
     targetElement.getBoundingClientRect();
 
-  const naturalWidth = pageCanvas?.width ?? cssWidth;
-  const naturalHeight = pageCanvas?.height ?? cssHeight;
+  const naturalWidth = pageSize?.width ?? pageCanvas?.width ?? cssWidth;
+  const naturalHeight = pageSize?.height ?? pageCanvas?.height ?? cssHeight;
 
   const scaleX = cssWidth / (naturalWidth || 1);
   const scaleY = cssHeight / (naturalHeight || 1);

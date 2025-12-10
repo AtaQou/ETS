@@ -55,11 +55,16 @@ const TextBox = () => {
 
   const finalPositions = useMemo(() => {
     if (pageMounted && currentPageData && currentPageData?.data.length) {
+      const pageSize = {
+        width: currentPageData.width,
+        height: currentPageData.height,
+      };
       const screenPositions = currentPageData.data.map((w) => {
         const { box, word } = w;
         const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
           box,
-          currentPage
+          currentPage,
+          pageSize
         );
         return {
           word,

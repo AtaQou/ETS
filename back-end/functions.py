@@ -111,4 +111,9 @@ def process_single_page(page_num, pdf_content=None, scaling_factor=1.0, ):
         else:
             processed_image = original_image
 
-        return {"page": page_num, "data": process_page(processed_image)}
+        return {
+            "page": page_num,
+            "width": processed_image.width,
+            "height": processed_image.height,
+            "data": process_page(processed_image)
+        }

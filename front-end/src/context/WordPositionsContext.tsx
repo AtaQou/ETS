@@ -92,7 +92,12 @@ export const WordPositionsProvider: React.FC<WordPositionsProviderProps> = ({
     };
 
     const setWordPositions = (
-        wordPositions: { data: IWordPositions[]; page: number }[]
+        wordPositions: {
+            data: IWordPositions[];
+            page: number;
+            width?: number;
+            height?: number;
+        }[]
     ) => {
         dispatch({ type: "SET_WORD_POSITIONS", payload: wordPositions });
     };
