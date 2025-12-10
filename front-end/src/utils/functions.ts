@@ -134,24 +134,3 @@ export const calculateScaledPositions = (
   return { xPrime, yPrime, wPrime, hPrime };
 };
 
-const normalizeBounds = ({
-  xPrime,
-  yPrime,
-  wPrime,
-  hPrime,
-}: {
-  xPrime: number;
-  yPrime: number;
-  wPrime: number;
-  hPrime: number;
-}) => {
-  const screenWidth = document.documentElement.scrollWidth;
-  const screenHeight = document.documentElement.scrollHeight;
-
-  const left = xPrime / screenWidth;
-  const top = yPrime / screenHeight;
-  const right = (xPrime + wPrime) / screenWidth;
-  const bottom = (yPrime + hPrime) / screenHeight;
-
-  return { left, top, right, bottom };
-};

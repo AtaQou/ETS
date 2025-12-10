@@ -2,7 +2,7 @@ import TranslationPopup from "components/TranslationPopup";
 import { Context } from "context/Context";
 // import { useEyeTrackingData } from "context/EyeTrackingContext";
 import { useWordPositions } from "hooks/useWordPositions";
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   IContextProps,
   IScaledWordCoords,
@@ -16,8 +16,6 @@ import usePrevious from "hooks/usePrevious";
 
 const wordPadding = 20;
 const apiKey = "AIzaSyAxw5JhyHdllTP-E2dlrnsJX4ugkyuq1PY";
-const testWord = "pathological";
-
 const TextBox = () => {
   // const { eyeData } = useEyeTrackingData();
   const { eyeData } = useEyeTrackingStore();
@@ -38,12 +36,13 @@ const TextBox = () => {
   const [currentPageData, setCurrentPageData] = useState<{
     data: IWordPositions[];
     page: number;
+    width?: number;
+    height?: number;
   }>();
 
   const [currentWord, setCurrentWord] = useState<IScaledWordCoords>();
   const [wordsScreenPositions, setWordsScreenPositions] =
     useState<IScaledWordCoords[]>();
-  const observerRef = useRef<MutationObserver | null>(null);
   const [translation, setTranslation] = useState<string>("");
   const [coolDown, setCoolDown] = useState<boolean>(false);
 
@@ -53,7 +52,7 @@ const TextBox = () => {
     }
   }, [currentPage, wordPositions]);
 
-  const finalPositions = useMemo(() => {
+  useEffect(() => {
     if (pageMounted && currentPageData && currentPageData?.data.length) {
       const pageSize = {
         width: currentPageData.width,
@@ -76,14 +75,12 @@ const TextBox = () => {
           },
         };
       });
-      return screenPositions;
+      setWordsScreenPositions(screenPositions);
+      return;
     }
-    return [];
-  }, [currentPage, currentPageData, pageMounted, scrollTop]);
 
-  useEffect(() => {
-    if (finalPositions) setWordsScreenPositions(finalPositions);
-  }, [finalPositions]);
+    setWordsScreenPositions([]);
+  }, [currentPage, currentPageData, pageMounted, scrollTop]);
 
   useEffect(() => {
     if (coolDown) return;

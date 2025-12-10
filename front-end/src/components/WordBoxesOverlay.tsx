@@ -1,4 +1,4 @@
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { Context } from "context/Context";
 import { useWordPositions } from "hooks/useWordPositions";
 import useCurrentPageData from "hooks/useCurrentPageData";
@@ -14,15 +14,22 @@ const WordBoxesOverlay: React.FC = () => {
 
     const currentPageData = useCurrentPageData(wordPositions, currentPage);
 
-    const boxes = useMemo(() => {
-        if (!currentPageData || !currentPageData.data) return [];
+    const [boxes, setBoxes] = useState<
+        { id: string; word: string; x: number; y: number; w: number; h: number }[]
+    >([]);
+
+    useEffect(() => {
+        if (!currentPageData || !currentPageData.data) {
+            setBoxes([]);
+            return;
+        }
 
         const pageSize = {
             width: currentPageData.width,
             height: currentPageData.height,
         };
 
-        return currentPageData.data.map((item: any, index: number) => {
+        const mappedBoxes = currentPageData.data.map((item: any, index: number) => {
             const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
                 item.box,
                 currentPage,
@@ -38,6 +45,8 @@ const WordBoxesOverlay: React.FC = () => {
                 h: hPrime,
             };
         });
+
+        setBoxes(mappedBoxes);
     }, [currentPageData, currentPage, scrollTop]);
 
     if (!showBoxes || !file || file.size === 0 || boxes.length === 0) {
