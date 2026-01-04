@@ -5,6 +5,8 @@ const useCurrentPageData = (
   wordPositions: {
     data: IWordPositions[];
     page: number;
+    width?: number;
+    height?: number;
   }[],
   currentPage: number
 ) => {

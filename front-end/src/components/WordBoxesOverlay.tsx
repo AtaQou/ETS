@@ -1,4 +1,4 @@
-import React, { useContext, useMemo } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { Context } from "context/Context";
 import { useWordPositions } from "hooks/useWordPositions";
 import useCurrentPageData from "hooks/useCurrentPageData";
@@ -7,24 +7,35 @@ import { calculateScaledPositions } from "utils/functions";
 const DEBUG_SHOW_BOXES = false;
 
 const WordBoxesOverlay: React.FC = () => {
-    const { currentPage, scrollTop, userSettingsApi, userSettingsUi, file } =
-        useContext(Context);
-    const { zoom } = userSettingsApi;
+    const { currentPage, userSettingsUi, file, scrollTop } = useContext(Context);
     const { wordPositions } = useWordPositions();
 
     const showBoxes = userSettingsUi.showBoxes ?? DEBUG_SHOW_BOXES;
 
     const currentPageData = useCurrentPageData(wordPositions, currentPage);
 
-    const boxes = useMemo(() => {
-        if (!currentPageData || !currentPageData.data) return [];
+    const [boxes, setBoxes] = useState<
+        { id: string; word: string; x: number; y: number; w: number; h: number }[]
+    >([]);
 
-        return currentPageData.data.map((item: any, index: number) => {
+    useEffect(() => {
+        if (!currentPageData || !currentPageData.data) {
+            setBoxes([]);
+            return;
+        }
+
+        const pageSize = {
+            width: currentPageData.width,
+            height: currentPageData.height,
+        };
+
+        // Use the same scaled coordinates that feed translation/eye-tracking so the
+        // debug overlay reflects the exact bounding boxes the app consumes.
+        const mappedBoxes = currentPageData.data.map((item: any, index: number) => {
             const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
                 item.box,
-                scrollTop,
                 currentPage,
-                1 // ΔΕΝ ξανα-σκέιλάρουμε με zoom στο front-end
+                pageSize
             );
 
             return {
@@ -36,7 +47,9 @@ const WordBoxesOverlay: React.FC = () => {
                 h: hPrime,
             };
         });
-    }, [currentPageData, scrollTop, currentPage, zoom]);
+
+        setBoxes(mappedBoxes);
+    }, [currentPageData, currentPage, scrollTop]);
 
     if (!showBoxes || !file || file.size === 0 || boxes.length === 0) {
         return null;

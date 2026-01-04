@@ -99,58 +99,38 @@ export const saveToFile = (data: Record<string, any>, filename: string) => {
 
 export const calculateScaledPositions = (
   box: number[],
-  scrollTop: number,
   currentPage: number,
-  scale: number
+  pageSize?: { width?: number; height?: number }
 ): { xPrime: number; yPrime: number; wPrime: number; hPrime: number } => {
   const [x, y, w, h] = box;
-  const pdfContainer = document.getElementById("pdf-container");
-  const element = document.getElementById("pdf-page");
-  const header = document.getElementById("header");
-  const footer = document.getElementById("footer");
+  const pageWrapper = document.querySelector(
+    `[data-page-number="${currentPage}"]`
+  ) as HTMLElement | null;
 
-  if (pdfContainer && element && header && footer) {
-    const { width: canvasWidth, height: canvasHeight } =
-      element.getBoundingClientRect();
-    const { width: containerWidth } = pdfContainer.getBoundingClientRect();
-    const { height: headerHeight } = header.getBoundingClientRect();
+  // Prefer the actual canvas to capture the rendered scale of the PDF page
+  const pageCanvas = pageWrapper?.querySelector("canvas") as
+    | HTMLCanvasElement
+    | null;
 
-    console.log({ canvasWidth, canvasHeight });
-
-    const cWidth = canvasWidth;
-
-    const horizontalMargin = scale < 1 ? (containerWidth - cWidth) / 2 : 0;
-
-    const yRelativeToPage = y + (currentPage - 1) * canvasHeight;
-
-    const xPrime = x + horizontalMargin - 5;
-    const yPrime = yRelativeToPage - scrollTop + headerHeight - 5;
-    const wPrime = w + 10;
-    const hPrime = h + 10;
-
-    return { xPrime, yPrime, wPrime, hPrime };
+  if (!pageWrapper) {
+    return { xPrime: 0, yPrime: 0, wPrime: 0, hPrime: 0 };
   }
-  return { xPrime: 0, yPrime: 0, wPrime: 0, hPrime: 0 };
+
+  const targetElement = (pageCanvas as HTMLElement) ?? pageWrapper;
+  const { width: cssWidth, height: cssHeight, left, top } =
+    targetElement.getBoundingClientRect();
+
+  const naturalWidth = pageSize?.width ?? pageCanvas?.width ?? cssWidth;
+  const naturalHeight = pageSize?.height ?? pageCanvas?.height ?? cssHeight;
+
+  const scaleX = cssWidth / (naturalWidth || 1);
+  const scaleY = cssHeight / (naturalHeight || 1);
+
+  const xPrime = left + x * scaleX;
+  const yPrime = top + y * scaleY;
+  const wPrime = w * scaleX;
+  const hPrime = h * scaleY;
+
+  return { xPrime, yPrime, wPrime, hPrime };
 };
 
-const normalizeBounds = ({
-  xPrime,
-  yPrime,
-  wPrime,
-  hPrime,
-}: {
-  xPrime: number;
-  yPrime: number;
-  wPrime: number;
-  hPrime: number;
-}) => {
-  const screenWidth = document.documentElement.scrollWidth;
-  const screenHeight = document.documentElement.scrollHeight;
-
-  const left = xPrime / screenWidth;
-  const top = yPrime / screenHeight;
-  const right = (xPrime + wPrime) / screenWidth;
-  const bottom = (yPrime + hPrime) / screenHeight;
-
-  return { left, top, right, bottom };
-};

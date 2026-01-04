@@ -151,10 +151,10 @@ const FileViewer: React.FC = () => {
       >
         {Array.from(new Array(pageCount), (el, index) => (
           <div
-            id='pdf-page'
+            id={`pdf-page-${index + 1}`}
             key={`wrapper_${index}`}
             style={{ height: pdfDimensions.height, ...styles.page }}
-            data-page-number={index}
+            data-page-number={index + 1}
           >
             <Page
               loading=''

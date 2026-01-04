@@ -2,7 +2,7 @@ import TranslationPopup from "components/TranslationPopup";
 import { Context } from "context/Context";
 // import { useEyeTrackingData } from "context/EyeTrackingContext";
 import { useWordPositions } from "hooks/useWordPositions";
-import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   IContextProps,
   IScaledWordCoords,
@@ -16,8 +16,6 @@ import usePrevious from "hooks/usePrevious";
 
 const wordPadding = 20;
 const apiKey = "AIzaSyAxw5JhyHdllTP-E2dlrnsJX4ugkyuq1PY";
-const testWord = "pathological";
-
 const TextBox = () => {
   // const { eyeData } = useEyeTrackingData();
   const { eyeData } = useEyeTrackingStore();
@@ -25,9 +23,9 @@ const TextBox = () => {
     pageMounted,
     scrollTop,
     currentPage,
-    userSettingsApi,
     shouldTranslate,
     setShouldTranslate,
+    userSettingsUi,
   } = useContext<IContextProps>(Context);
   const prevScrollTop = usePrevious(scrollTop);
 
@@ -39,12 +37,13 @@ const TextBox = () => {
   const [currentPageData, setCurrentPageData] = useState<{
     data: IWordPositions[];
     page: number;
+    width?: number;
+    height?: number;
   }>();
 
   const [currentWord, setCurrentWord] = useState<IScaledWordCoords>();
   const [wordsScreenPositions, setWordsScreenPositions] =
     useState<IScaledWordCoords[]>();
-  const observerRef = useRef<MutationObserver | null>(null);
   const [translation, setTranslation] = useState<string>("");
   const [coolDown, setCoolDown] = useState<boolean>(false);
 
@@ -54,15 +53,18 @@ const TextBox = () => {
     }
   }, [currentPage, wordPositions]);
 
-  const finalPositions = useMemo(() => {
+  useEffect(() => {
     if (pageMounted && currentPageData && currentPageData?.data.length) {
+      const pageSize = {
+        width: currentPageData.width,
+        height: currentPageData.height,
+      };
       const screenPositions = currentPageData.data.map((w) => {
         const { box, word } = w;
         const { xPrime, yPrime, wPrime, hPrime } = calculateScaledPositions(
           box,
-          scrollTop,
           currentPage,
-          userSettingsApi.zoom
+          pageSize
         );
         return {
           word,
@@ -74,23 +76,15 @@ const TextBox = () => {
           },
         };
       });
-      return screenPositions;
+      setWordsScreenPositions(screenPositions);
+      return;
     }
-    return [];
-  }, [
-    currentPage,
-    currentPageData,
-    pageMounted,
-    scrollTop,
-    userSettingsApi.zoom,
-  ]);
+
+    setWordsScreenPositions([]);
+  }, [currentPage, currentPageData, pageMounted, scrollTop]);
 
   useEffect(() => {
-    if (finalPositions) setWordsScreenPositions(finalPositions);
-  }, [finalPositions]);
-
-  useEffect(() => {
-    if (coolDown) return;
+    if (coolDown || userSettingsUi.hoverTranslateDebug) return;
     if (
       pageMounted &&
       wordsScreenPositions &&
@@ -122,7 +116,37 @@ const TextBox = () => {
     setShouldTranslate,
     shouldTranslate,
     coolDown,
+    userSettingsUi.hoverTranslateDebug,
   ]);
+
+  useEffect(() => {
+    if (!userSettingsUi.hoverTranslateDebug) return;
+    const handleHover = (event: globalThis.MouseEvent) => {
+      if (!wordsScreenPositions || !wordsScreenPositions.length) return;
+      const hoveredWord = wordsScreenPositions.find((position) => {
+        const { left, top, width, height } = position.wordCoords;
+        return (
+          event.clientX >= left &&
+          event.clientX <= left + width &&
+          event.clientY >= top &&
+          event.clientY <= top + height
+        );
+      });
+
+      if (hoveredWord) {
+        setCurrentWord(hoveredWord);
+        setShouldTranslate?.(true);
+      } else {
+        setCurrentWord(undefined);
+        setShouldTranslate?.(false);
+      }
+    };
+
+    window.addEventListener("mousemove", handleHover);
+    return () => {
+      window.removeEventListener("mousemove", handleHover);
+    };
+  }, [setShouldTranslate, userSettingsUi.hoverTranslateDebug, wordsScreenPositions]);
 
   useEffect(() => {
     const fetchTranslation = async () => {
