@@ -34,7 +34,6 @@ const MainContent: React.FC = () => {
           zoom: settings.zoomLevel,
           theme: settings.theme,
           language: settings.selected_language,
-          baseGazeSamples: settings.baseGazeSamples ?? 60,
         });
       } catch (err) {
       } finally {

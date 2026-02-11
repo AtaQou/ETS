@@ -14,7 +14,6 @@ export const initSettings: IUserSettings = {
     zoom: 0.84,
     theme: "dark",
     language: "en",
-    baseGazeSamples: 60,
     showBoxes: false, // νέο default
     hoverTranslateDebug: false,
 };

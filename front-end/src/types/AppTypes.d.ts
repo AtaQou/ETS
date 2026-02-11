@@ -82,7 +82,6 @@ export interface IUserSettings {
     zoom: number;
     theme: string;
     language: string;
-    baseGazeSamples: number;
     showBoxes?: boolean; // νέο, optional για να μην σπάσει παλιό state
     hoverTranslateDebug?: boolean;
 }
