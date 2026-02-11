@@ -17,6 +17,7 @@ const Settings: FC = () => {
         zoom,
         theme,
         language,
+        baseGazeSamples = 60,
         showBoxes = false,
         hoverTranslateDebug = false,
     } = userSettingsUi;
@@ -30,6 +31,9 @@ const Settings: FC = () => {
         let newValue: IUserSettings[keyof IUserSettings] = value;
         if (key === "zoom") {
             newValue = (value as IUserSettings["zoom"]) / 100;
+        }
+        if (key === "baseGazeSamples") {
+            newValue = Math.max(1, Math.round(value as number));
         }
         if (setUserSettingsUi) {
             setUserSettingsUi({ [key]: newValue });
@@ -107,6 +111,51 @@ const Settings: FC = () => {
                             className='ml-4 w-16 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
                         />
                         <span className='ml-1 text-base'>%</span>
+                    </div>
+                </div>
+
+                {/* Base gaze samples before translation */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Base gaze time before translation
+                    </label>
+                    <div
+                        className='flex items-center'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        <input
+                            type='range'
+                            min='1'
+                            max='600'
+                            value={baseGazeSamples}
+                            onChange={(e) =>
+                                handleSettingsChange(
+                                    "baseGazeSamples",
+                                    Number(e.target.value)
+                                )
+                            }
+                            className='slider text-gray-900 p-1 h-10 rounded border border-gray-300'
+                        />
+                        <input
+                            type='number'
+                            min={1}
+                            max={600}
+                            value={baseGazeSamples}
+                            onChange={(e) => {
+                                const raw = Number(e.target.value);
+                                if (Number.isNaN(raw)) return;
+                                const clamped = Math.max(1, Math.min(600, raw));
+                                handleSettingsChange("baseGazeSamples", clamped);
+                            }}
+                            className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
+                        />
+                        <span className='ml-2 text-base'>samples</span>
+                        <span className='ml-2 text-sm'>
+                            ({(baseGazeSamples / 300).toFixed(2)} sec @ 300 samples/sec)
+                        </span>
                     </div>
                 </div>
 

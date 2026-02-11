@@ -31,7 +31,7 @@ function Menu({ onCloseMenu }: MenuProps) {
     setSelectedDocID,
     setUserSettingsApi,
   } = useContext<IContextProps>(Context);
-  const { zoom, theme, language } = userSettingsUi;
+  const { zoom, theme, language, baseGazeSamples } = userSettingsUi;
   const { userID } = userInfo;
   const [selectedOption, setSelectedOption] = useState("settings");
   const [loadingMenu, setLoadingMenu] = useState(false);
@@ -63,6 +63,7 @@ function Menu({ onCloseMenu }: MenuProps) {
             zoomLevel: zoom,
             theme,
             language,
+            baseGazeSamples,
           })
           .then((res) => {
             setLoadingMenu(false);
@@ -71,6 +72,7 @@ function Menu({ onCloseMenu }: MenuProps) {
               zoom,
               theme,
               language,
+            baseGazeSamples,
             });
             triggerSnackbar({
               message: "Settings saved successfully!",

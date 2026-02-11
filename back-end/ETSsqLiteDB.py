@@ -12,7 +12,7 @@ def initializeDatabase():
 
     c.execute('''
             CREATE TABLE IF NOT EXISTS user_settings
-            ([userID] INTEGER, [Selected_language] TEXT, [theme] TEXT, [zoomLevel] INTEGER, 
+            ([userID] INTEGER, [Selected_language] TEXT, [theme] TEXT, [zoomLevel] INTEGER, [baseGazeSamples] INTEGER DEFAULT 60, 
             FOREIGN KEY(userID) REFERENCES users(userID))
             ''')
 

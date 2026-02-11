@@ -15,7 +15,7 @@ import useEyeTracking from "../../hooks/useEyeTracking";
 import usePrevious from "hooks/usePrevious";
 
 const wordPadding = 20;
-const apiKey = "AIzaSyAxw5JhyHdllTP-E2dlrnsJX4ugkyuq1PY";
+const apiKey = "AIzaSyCgaeL8Nfo0U4ZgQZ9xDRGCOH27-dkj3Sg";
 const TextBox = () => {
   // const { eyeData } = useEyeTrackingData();
   const { eyeData } = useEyeTrackingStore();
@@ -85,13 +85,18 @@ const TextBox = () => {
 
   useEffect(() => {
     if (coolDown || userSettingsUi.hoverTranslateDebug) return;
+    const baseGazeSamples = userSettingsUi.baseGazeSamples ?? 60;
     if (
       pageMounted &&
       wordsScreenPositions &&
       wordsScreenPositions.length &&
-      eyeData.length > 300
+      eyeData.length >= baseGazeSamples
     ) {
-      const detectedWord = validateEyeData2(eyeData, wordsScreenPositions);
+      const detectedWord = validateEyeData2(
+        eyeData,
+        wordsScreenPositions,
+        baseGazeSamples
+      );
       const currentTime = new Date();
       let milli = currentTime.getMilliseconds();
       let f_milli = String(milli).padStart(3, "0");
@@ -117,6 +122,7 @@ const TextBox = () => {
     shouldTranslate,
     coolDown,
     userSettingsUi.hoverTranslateDebug,
+    userSettingsUi.baseGazeSamples,
   ]);
 
   useEffect(() => {
