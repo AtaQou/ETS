@@ -33,6 +33,22 @@ ETSDVM_address = config_data['ETSUIConfig']['ETSDVMport']
 MODELS = {}
 
 
+def ensure_settings_schema():
+    conn = sqlite3.connect(sqLiteDatabase)
+    cursor = conn.cursor()
+    cursor.execute("PRAGMA table_info(user_settings)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+    if 'baseGazeSamples' not in existing_columns:
+        cursor.execute(
+            "ALTER TABLE user_settings ADD COLUMN baseGazeSamples INTEGER DEFAULT 60"
+        )
+        conn.commit()
+    conn.close()
+
+
+ensure_settings_schema()
+
+
 def get_model(tgt_lang):
     model_key = f'en-{tgt_lang}'
 
@@ -413,6 +429,7 @@ def update_settings():
     selected_language = data['language']
     theme = data['theme']
     zoomLevel = data['zoomLevel']
+    baseGazeSamples = data.get('baseGazeSamples', 60)
 
     conn = sqlite3.connect(sqLiteDatabase)
     cursor = conn.cursor()
@@ -421,11 +438,11 @@ def update_settings():
     user_settings = cursor.fetchone()
 
     if user_settings:
-        cursor.execute("UPDATE user_settings SET Selected_language = ?, theme = ?, zoomLevel = ? WHERE userID = ?",
-                       (selected_language, theme, zoomLevel, userID))
+        cursor.execute("UPDATE user_settings SET Selected_language = ?, theme = ?, zoomLevel = ?, baseGazeSamples = ? WHERE userID = ?",
+                       (selected_language, theme, zoomLevel, baseGazeSamples, userID))
     else:
-        cursor.execute("INSERT INTO user_settings (userID, Selected_language, theme, zoomLevel) VALUES (?, ?, ?, ?)",
-                       (userID, selected_language, theme, zoomLevel))
+        cursor.execute("INSERT INTO user_settings (userID, Selected_language, theme, zoomLevel, baseGazeSamples) VALUES (?, ?, ?, ?, ?)",
+                       (userID, selected_language, theme, zoomLevel, baseGazeSamples))
     conn.commit()
 
     return jsonify({'message': 'Settings updated.'}), 200
@@ -453,7 +470,8 @@ def get_user_settings():
         "userID": user_settings[0],
         "selected_language": user_settings[1],
         "theme": user_settings[2],
-        "zoomLevel": user_settings[3]
+        "zoomLevel": user_settings[3],
+        "baseGazeSamples": user_settings[4] if len(user_settings) > 4 and user_settings[4] is not None else 60,
     }
 
     return jsonify(settings), 200
