@@ -85,18 +85,13 @@ const TextBox = () => {
 
   useEffect(() => {
     if (coolDown || userSettingsUi.hoverTranslateDebug) return;
-    const baseGazeSamples = userSettingsUi.baseGazeSamples ?? 60;
     if (
       pageMounted &&
       wordsScreenPositions &&
       wordsScreenPositions.length &&
-      eyeData.length >= baseGazeSamples
+      eyeData.length > 300
     ) {
-      const detectedWord = validateEyeData2(
-        eyeData,
-        wordsScreenPositions,
-        baseGazeSamples
-      );
+      const detectedWord = validateEyeData2(eyeData, wordsScreenPositions);
       const currentTime = new Date();
       let milli = currentTime.getMilliseconds();
       let f_milli = String(milli).padStart(3, "0");
@@ -122,7 +117,6 @@ const TextBox = () => {
     shouldTranslate,
     coolDown,
     userSettingsUi.hoverTranslateDebug,
-    userSettingsUi.baseGazeSamples,
   ]);
 
   useEffect(() => {

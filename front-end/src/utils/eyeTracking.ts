@@ -1,4 +1,4 @@
-import { GazeData, IScaledWordCoords } from "types/AppTypes";
+import { GazeData, IScaledWordCoords, IWordPositions } from "types/AppTypes";
 
 // export const normalizeCoordinates = (x, y) => {
 //   const screenWidth = window.screen.width;
@@ -197,8 +197,9 @@ const isPointInsideBox = (
 export const validateEyeData2 = (
   eyeData: GazeData[],
   wordPositions: IScaledWordCoords[],
-  baseGazePoints = 60
+  wordPadding = 10
 ) => {
+  const baseGazePoints = 60;
   const additionalGazePointsPerLetter = 10;
   for (let wordData of wordPositions) {
     const { word, wordCoords } = wordData;
