@@ -94,6 +94,7 @@ export const WordPositionsProvider: React.FC<WordPositionsProviderProps> = ({
     const setWordPositions = (
         wordPositions: {
             data: IWordPositions[];
+            tokensAll?: any[];
             page: number;
             width?: number;
             height?: number;

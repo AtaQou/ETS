@@ -18,6 +18,7 @@ const Settings: FC = () => {
         theme,
         language,
         baseGazeSamples = 60,
+        translationMode = "word",
         showBoxes = false,
         hoverTranslateDebug = false,
     } = userSettingsUi;
@@ -217,6 +218,40 @@ const Settings: FC = () => {
                                 {name}
                             </option>
                         ))}
+                    </select>
+                </div>
+
+                {/* Translation mode */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Translation mode
+                    </label>
+                    <select
+                        value={translationMode}
+                        style={
+                            isDarkTheme
+                                ? {
+                                    backgroundColor: dark_secondary,
+                                    color: light_secondary,
+                                }
+                                : {
+                                    backgroundColor: light_primary,
+                                    color: dark_primary,
+                                }
+                        }
+                        className='text-base p-1 w-48 rounded border border-gray-300'
+                        onChange={(e) =>
+                            handleSettingsChange(
+                                "translationMode",
+                                e.target.value as IUserSettings["translationMode"]
+                            )
+                        }
+                    >
+                        <option value='word'>Word</option>
+                        <option value='sentence'>Sentence</option>
                     </select>
                 </div>
 

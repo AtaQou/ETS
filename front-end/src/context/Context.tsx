@@ -28,7 +28,7 @@ const userInfo = userInfoFromStorage
 
 const userSettingsFromStorage = localStorage.getItem("userSettingsUi");
 const userSettingsUi = userSettingsFromStorage
-  ? JSON.parse(userSettingsFromStorage)
+  ? { ...initSettings, ...JSON.parse(userSettingsFromStorage) }
   : initSettings;
 
 const eyeTrackerFromStorage = localStorage.getItem("eyeTracker");

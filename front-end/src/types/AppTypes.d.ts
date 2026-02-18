@@ -24,8 +24,8 @@ export interface IContextProps {
   setUserInfo?: (userInfo: IUserInfo) => void;
   setLoading?: (loading: boolean) => void;
   logout: () => void;
-  setUserSettingsUi?: (userSettings: Part) => void;
-  setUserSettingsApi?: (userSettings: IUserSettings) => void;
+  setUserSettingsUi?: (userSettings: Partial<IUserSettings>) => void;
+  setUserSettingsApi?: (userSettings: Partial<IUserSettings>) => void;
   setPdfDimensions?: (dimensions: IPdfDimensions) => void;
   goToNextPage?: () => void;
   goToPrevPage?: () => void;
@@ -47,6 +47,7 @@ interface ISingleScaledWordCoords {
 interface IScaledWordCoords {
   word: string;
   wordCoords: ScaledWord;
+  sourceBox?: number[];
 }
 interface ScaledWord {
   left: number;
@@ -59,6 +60,15 @@ interface IWordPositions {
   box: number[];
   confidence: number;
   word: string;
+}
+
+interface IOcrToken {
+  raw: string;
+  confidence: number;
+  box: number[];
+  line_num: number;
+  par_num: number;
+  block_num: number;
 }
 
 export interface IContextValues extends IContextState {}
@@ -83,6 +93,7 @@ export interface IUserSettings {
     theme: string;
     language: string;
     baseGazeSamples: number;
+    translationMode: "word" | "sentence";
     showBoxes?: boolean; // νέο, optional για να μην σπάσει παλιό state
     hoverTranslateDebug?: boolean;
 }
@@ -154,6 +165,7 @@ interface IWordPositionsState {
   wordsLoading: boolean;
   wordPositions: {
     data: IWordPositions[];
+    tokensAll?: IOcrToken[];
     page: number;
     width?: number;
     height?: number;
@@ -162,6 +174,7 @@ interface IWordPositionsState {
   setWordPositions?: (
     wordPositions: {
       data: IWordPositions[];
+      tokensAll?: IOcrToken[];
       page: number;
       width?: number;
       height?: number;

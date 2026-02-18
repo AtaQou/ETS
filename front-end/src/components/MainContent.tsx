@@ -35,6 +35,7 @@ const MainContent: React.FC = () => {
           theme: settings.theme,
           language: settings.selected_language,
           baseGazeSamples: settings.baseGazeSamples ?? 60,
+          translationMode: settings.translationMode ?? "word",
         });
       } catch (err) {
       } finally {

@@ -15,6 +15,7 @@ export const initSettings: IUserSettings = {
     theme: "dark",
     language: "en",
     baseGazeSamples: 60,
+    translationMode: "word",
     showBoxes: false, // νέο default
     hoverTranslateDebug: false,
 };

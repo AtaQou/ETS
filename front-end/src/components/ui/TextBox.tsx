@@ -5,6 +5,7 @@ import { useWordPositions } from "hooks/useWordPositions";
 import React, { useContext, useEffect, useState } from "react";
 import {
   IContextProps,
+  ID,
   IScaledWordCoords,
   IWordPositions,
 } from "types/AppTypes";
@@ -13,6 +14,7 @@ import { calculateScaledPositions } from "utils/functions";
 import useEyeTrackingStore from "store/store";
 import useEyeTracking from "../../hooks/useEyeTracking";
 import usePrevious from "hooks/usePrevious";
+import { apiURL } from "utils/consts";
 
 const wordPadding = 20;
 const apiKey = "AIzaSyCgaeL8Nfo0U4ZgQZ9xDRGCOH27-dkj3Sg";
@@ -23,9 +25,11 @@ const TextBox = () => {
     pageMounted,
     scrollTop,
     currentPage,
+    selectedDocID,
     shouldTranslate,
     setShouldTranslate,
     userSettingsUi,
+    userInfo,
   } = useContext<IContextProps>(Context);
   const prevScrollTop = usePrevious(scrollTop);
 
@@ -36,6 +40,7 @@ const TextBox = () => {
 
   const [currentPageData, setCurrentPageData] = useState<{
     data: IWordPositions[];
+    tokensAll?: any[];
     page: number;
     width?: number;
     height?: number;
@@ -68,6 +73,7 @@ const TextBox = () => {
         );
         return {
           word,
+          sourceBox: box,
           wordCoords: {
             left: xPrime,
             top: yPrime,
@@ -155,12 +161,59 @@ const TextBox = () => {
   }, [setShouldTranslate, userSettingsUi.hoverTranslateDebug, wordsScreenPositions]);
 
   useEffect(() => {
+    const getSentenceFromFocus = async (
+      docID: ID,
+      userID: string,
+      page: number,
+      focusBox?: number[]
+    ): Promise<string> => {
+      if (!focusBox || !docID || !userID) return "";
+      try {
+        const response = await fetch(`${apiURL}/sentence-from-focus`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            docID,
+            userID,
+            page,
+            focusBox,
+          }),
+        });
+        if (!response.ok) return "";
+        const data = await response.json();
+        return data?.sentence || "";
+      } catch (error) {
+        console.error("Error fetching sentence:", error);
+        return "";
+      }
+    };
+
     const fetchTranslation = async () => {
       setTranslation("");
       if (currentWord && shouldTranslate) {
+        const isSentenceMode = userSettingsUi.translationMode === "sentence";
+        const sourceWord = currentWord.word;
+        let sourceSentence = "";
+        if (isSentenceMode) {
+          sourceSentence = await getSentenceFromFocus(
+            selectedDocID,
+            userInfo.userID,
+            currentPage,
+            currentWord.sourceBox
+          );
+        }
+        const textToTranslate =
+          isSentenceMode && sourceSentence ? sourceSentence : sourceWord;
+        if (!textToTranslate) return;
+
         try {
           const response = await fetch(
-            `https://translation.googleapis.com/language/translate/v2?key=${apiKey}&source=en&target=el&q=${currentWord.word}`,
+            `https://translation.googleapis.com/language/translate/v2?key=${apiKey}&source=en&target=${userSettingsUi.language}&q=${encodeURIComponent(
+              textToTranslate
+            )}`,
 
             {
               method: "GET",
@@ -187,7 +240,15 @@ const TextBox = () => {
       }
     };
     fetchTranslation();
-  }, [currentWord, shouldTranslate]);
+  }, [
+    currentWord,
+    shouldTranslate,
+    selectedDocID,
+    userInfo.userID,
+    currentPage,
+    userSettingsUi.translationMode,
+    userSettingsUi.language,
+  ]);
 
   useEffect(() => {
     if (shouldTranslate) {
