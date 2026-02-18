@@ -43,6 +43,11 @@ def ensure_settings_schema():
             "ALTER TABLE user_settings ADD COLUMN baseGazeSamples INTEGER DEFAULT 60"
         )
         conn.commit()
+    if 'translationMode' not in existing_columns:
+        cursor.execute(
+            "ALTER TABLE user_settings ADD COLUMN translationMode TEXT DEFAULT 'word'"
+        )
+        conn.commit()
     conn.close()
 
 
@@ -257,6 +262,74 @@ def get_documents():
 memo_object = {}
 
 
+def _get_user_scaling_factor(cursor, user_id):
+    cursor.execute(
+        "SELECT zoomLevel FROM user_settings WHERE userID = ?", (user_id,))
+    settings_row = cursor.fetchone()
+    if settings_row:
+        zoom_level = settings_row['zoomLevel']
+        if zoom_level is None:
+            return 1.0
+        return float(zoom_level)
+    return 1.0
+
+
+def _build_pages_data(pdf_content, scaling_factor):
+    pdf_reader = PdfReader(io.BytesIO(pdf_content))
+    partial_process_single_page = partial(
+        process_single_page, pdf_content=pdf_content, scaling_factor=scaling_factor)
+    with ThreadPoolExecutor() as executor:
+        return list(executor.map(partial_process_single_page, range(len(pdf_reader.pages))))
+
+
+def _find_focus_token(tokens, focus_box):
+    fx, fy, fw, fh = focus_box
+    f_right = fx + fw
+    f_bottom = fy + fh
+
+    best_idx = None
+    best_score = -1.0
+
+    for idx, token in enumerate(tokens):
+        tx, ty, tw, th = token.get("box", [0, 0, 0, 0])
+        t_right = tx + tw
+        t_bottom = ty + th
+
+        inter_w = max(0, min(f_right, t_right) - max(fx, tx))
+        inter_h = max(0, min(f_bottom, t_bottom) - max(fy, ty))
+        inter_area = inter_w * inter_h
+        if inter_area <= 0:
+            continue
+
+        token_area = max(1, tw * th)
+        score = inter_area / token_area
+        if score > best_score:
+            best_score = score
+            best_idx = idx
+
+    return best_idx
+
+
+def _is_sentence_boundary(raw_token):
+    return any(ch in raw_token for ch in ".?!,")
+
+
+def _build_sentence_text(tokens):
+    sentence_parts = []
+    punctuation_tokens = {".", ",", "?", "!", ";", ":"}
+    for token in tokens:
+        current = token.get("raw", "").strip()
+        if not current:
+            continue
+
+        if sentence_parts and current in punctuation_tokens:
+            sentence_parts[-1] = sentence_parts[-1].rstrip() + current
+        else:
+            sentence_parts.append(current)
+
+    return " ".join(sentence_parts).strip()
+
+
 @app.route('/api/words-positions', methods=['GET'])
 def get_position_of_words():
     try:
@@ -268,18 +341,12 @@ def get_position_of_words():
 
         memo_key = f"{doc_id}_{user_id}"
 
-        # Fetch zoomLevel from user_settings
-        c.execute(
-            "SELECT zoomLevel FROM user_settings WHERE userID = ?", (user_id,))
-        settings_row = c.fetchone()
-        if settings_row:
-            scaling_factor = settings_row['zoomLevel'] / 1.0
-        else:
-            scaling_factor = 1.0  # default value
+        scaling_factor = _get_user_scaling_factor(c, user_id)
         print(scaling_factor)
 
-        # if (memo_key in memo_object) and (previous_zoom == scaling_factor):
-        #     return jsonify({"success": True, "data": memo_object[memo_key]})
+        memo_key = f"{memo_key}_{round(scaling_factor, 4)}"
+        if memo_key in memo_object:
+            return jsonify({"success": True, "data": memo_object[memo_key]})
 
         c.execute(
             "SELECT docFile FROM documents WHERE docID = ? AND userID = ?", (doc_id, user_id))
@@ -287,16 +354,7 @@ def get_position_of_words():
 
         if row:
             pdf_content = row['docFile']
-            pdf_reader = PdfReader(io.BytesIO(pdf_content))
-
-            all_pages_data = []
-
-            partial_process_single_page = partial(
-                process_single_page, pdf_content=pdf_content, scaling_factor=scaling_factor)
-
-            with ThreadPoolExecutor() as executor:
-                all_pages_data = list(executor.map(
-                    partial_process_single_page, range(len(pdf_reader.pages))))
+            all_pages_data = _build_pages_data(pdf_content, scaling_factor)
 
             memo_object[memo_key] = all_pages_data
 
@@ -308,6 +366,87 @@ def get_position_of_words():
     except Exception as e:
         print(traceback.format_exc())
         return jsonify({"success": False, "message": "An error occurred"})
+
+
+@app.route('/api/sentence-from-focus', methods=['POST'])
+def sentence_from_focus():
+    try:
+        data = request.get_json()
+        doc_id = data.get('docID')
+        user_id = data.get('userID')
+        page = data.get('page')
+        focus_box = data.get('focusBox')
+
+        if doc_id is None or user_id is None or page is None or not focus_box:
+            return jsonify({"success": False, "message": "Missing required fields"}), 400
+
+        conn = sqlite3.connect(sqLiteDatabase)
+        conn.row_factory = sqlite3.Row
+        c = conn.cursor()
+
+        scaling_factor = _get_user_scaling_factor(c, user_id)
+        memo_key = f"{doc_id}_{user_id}_{round(scaling_factor, 4)}"
+        pages_data = memo_object.get(memo_key)
+
+        if pages_data is None:
+            c.execute(
+                "SELECT docFile FROM documents WHERE docID = ? AND userID = ?", (doc_id, user_id))
+            row = c.fetchone()
+            if not row:
+                conn.close()
+                return jsonify({"success": False, "message": "Document not found"}), 404
+            pages_data = _build_pages_data(row['docFile'], scaling_factor)
+            memo_object[memo_key] = pages_data
+
+        conn.close()
+
+        page_index = int(page) - 1
+        if page_index < 0 or page_index >= len(pages_data):
+            return jsonify({"success": False, "message": "Invalid page"}), 400
+
+        page_data = pages_data[page_index]
+        tokens = page_data.get("tokensAll", [])
+        if not tokens:
+            return jsonify({"success": False, "message": "No OCR tokens on page"}), 404
+
+        matched_idx = _find_focus_token(tokens, focus_box)
+        if matched_idx is None:
+            return jsonify({"success": False, "message": "No matching token found"}), 404
+
+        matched_token = tokens[matched_idx]
+        scoped_tokens = [
+            token for token in tokens
+            if token.get("block_num") == matched_token.get("block_num")
+            and token.get("par_num") == matched_token.get("par_num")
+        ]
+        if len(scoped_tokens) < 2:
+            scoped_tokens = tokens
+
+        local_match_idx = _find_focus_token(scoped_tokens, focus_box)
+        if local_match_idx is None:
+            return jsonify({"success": False, "message": "No matching token found"}), 404
+
+        start = local_match_idx
+        while start > 0 and not _is_sentence_boundary(scoped_tokens[start - 1].get("raw", "")):
+            start -= 1
+
+        end = local_match_idx
+        while end < len(scoped_tokens) - 1 and not _is_sentence_boundary(scoped_tokens[end].get("raw", "")):
+            end += 1
+
+        sentence_tokens = scoped_tokens[start:end + 1]
+        sentence_text = _build_sentence_text(sentence_tokens)
+        if not sentence_text:
+            sentence_text = matched_token.get("raw", "")
+
+        return jsonify({
+            "success": True,
+            "sentence": sentence_text,
+            "matchedToken": matched_token.get("raw", ""),
+        }), 200
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({"success": False, "message": "An error occurred"}), 500
 
 # ---------------------- Eye tracker ----------------------------
 
@@ -430,6 +569,7 @@ def update_settings():
     theme = data['theme']
     zoomLevel = data['zoomLevel']
     baseGazeSamples = data.get('baseGazeSamples', 60)
+    translationMode = data.get('translationMode', 'word')
 
     conn = sqlite3.connect(sqLiteDatabase)
     cursor = conn.cursor()
@@ -438,11 +578,11 @@ def update_settings():
     user_settings = cursor.fetchone()
 
     if user_settings:
-        cursor.execute("UPDATE user_settings SET Selected_language = ?, theme = ?, zoomLevel = ?, baseGazeSamples = ? WHERE userID = ?",
-                       (selected_language, theme, zoomLevel, baseGazeSamples, userID))
+        cursor.execute("UPDATE user_settings SET Selected_language = ?, theme = ?, zoomLevel = ?, baseGazeSamples = ?, translationMode = ? WHERE userID = ?",
+                       (selected_language, theme, zoomLevel, baseGazeSamples, translationMode, userID))
     else:
-        cursor.execute("INSERT INTO user_settings (userID, Selected_language, theme, zoomLevel, baseGazeSamples) VALUES (?, ?, ?, ?, ?)",
-                       (userID, selected_language, theme, zoomLevel, baseGazeSamples))
+        cursor.execute("INSERT INTO user_settings (userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode) VALUES (?, ?, ?, ?, ?, ?)",
+                       (userID, selected_language, theme, zoomLevel, baseGazeSamples, translationMode))
     conn.commit()
 
     return jsonify({'message': 'Settings updated.'}), 200
@@ -457,9 +597,9 @@ def get_user_settings():
         return jsonify({'message': 'userID is required.'}), 400
 
     conn = sqlite3.connect(sqLiteDatabase)
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-
-    cursor.execute("SELECT * FROM user_settings WHERE userID = ?", (userID,))
+    cursor.execute("SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode FROM user_settings WHERE userID = ?", (userID,))
     user_settings = cursor.fetchone()
 
     if not user_settings:
@@ -467,11 +607,12 @@ def get_user_settings():
 
     # Parsing the fetched data into a dictionary
     settings = {
-        "userID": user_settings[0],
-        "selected_language": user_settings[1],
-        "theme": user_settings[2],
-        "zoomLevel": user_settings[3],
-        "baseGazeSamples": user_settings[4] if len(user_settings) > 4 and user_settings[4] is not None else 60,
+        "userID": user_settings["userID"],
+        "selected_language": user_settings["Selected_language"],
+        "theme": user_settings["theme"],
+        "zoomLevel": user_settings["zoomLevel"],
+        "baseGazeSamples": user_settings["baseGazeSamples"] if user_settings["baseGazeSamples"] is not None else 60,
+        "translationMode": user_settings["translationMode"] if user_settings["translationMode"] else "word",
     }
 
     return jsonify(settings), 200
@@ -479,4 +620,3 @@ def get_user_settings():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-

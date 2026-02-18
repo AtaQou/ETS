@@ -52,17 +52,42 @@ async def send_request(request_data):
 
 def process_page(page_image):
     words_with_positions = []
+    tokens_all = []
     data = pytesseract.image_to_data(
         page_image, output_type=pytesseract.Output.DICT
     )
-    words = data['text']
-    confidences = data['conf']
-    boxes = zip(data['left'], data['top'], data['width'], data['height'])
+    words = data.get('text', [])
 
-    for word, confidence, box in zip(words, confidences, boxes):
-        if int(confidence) > 30:
-            # Remove numbers, symbols, and punctuation
-            cleaned_word = re.sub(r'[^a-zA-Z\s]', '', word)
+    for idx, raw_word in enumerate(words):
+        token_text = (raw_word or "").strip()
+        if not token_text:
+            continue
+
+        conf_value = data.get('conf', ['-1'])[idx]
+        try:
+            confidence = float(conf_value)
+        except (ValueError, TypeError):
+            confidence = -1.0
+
+        box = (
+            int(data.get('left', [0])[idx]),
+            int(data.get('top', [0])[idx]),
+            int(data.get('width', [0])[idx]),
+            int(data.get('height', [0])[idx]),
+        )
+
+        tokens_all.append({
+            "raw": token_text,
+            "confidence": confidence,
+            "box": box,
+            "line_num": int(data.get('line_num', [0])[idx]),
+            "par_num": int(data.get('par_num', [0])[idx]),
+            "block_num": int(data.get('block_num', [0])[idx]),
+        })
+
+        if confidence > 30:
+            # Remove numbers, symbols, and punctuation only for gaze trigger words.
+            cleaned_word = re.sub(r'[^a-zA-Z\s]', '', token_text)
 
             # Filter words based on length, stop words, acronyms, URLs, and email addresses
             if (len(cleaned_word) > 2 and
@@ -70,12 +95,11 @@ def process_page(page_image):
                     not re.match(r'\b[A-Z]{2,}\b', cleaned_word) and
                     not re.match(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', cleaned_word) and
                     not re.match(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', cleaned_word)):
-
                 words_with_positions.append(
                     {"word": cleaned_word, "confidence": confidence, "box": box}
                 )
 
-    return words_with_positions
+    return words_with_positions, tokens_all
 
 
 def resize_pil_image(image, scaling_factor):
@@ -111,9 +135,11 @@ def process_single_page(page_num, pdf_content=None, scaling_factor=1.0, ):
         else:
             processed_image = original_image
 
+        filtered_words, tokens_all = process_page(processed_image)
         return {
             "page": page_num,
             "width": processed_image.width,
             "height": processed_image.height,
-            "data": process_page(processed_image)
+            "data": filtered_words,
+            "tokensAll": tokens_all,
         }
