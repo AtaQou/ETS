@@ -210,8 +210,9 @@ const TextBox = () => {
         if (!textToTranslate) return;
 
         try {
+          const targetLanguage = "el";
           const response = await fetch(
-            `https://translation.googleapis.com/language/translate/v2?key=${apiKey}&source=en&target=${userSettingsUi.language}&q=${encodeURIComponent(
+            `https://translation.googleapis.com/language/translate/v2?key=${apiKey}&source=en&target=${targetLanguage}&q=${encodeURIComponent(
               textToTranslate
             )}`,
 
@@ -226,7 +227,8 @@ const TextBox = () => {
 
           if (response.ok) {
             const data = await response.json();
-            setTranslation(data.data.translations[0].translatedText);
+            const translatedText = data?.data?.translations?.[0]?.translatedText;
+            setTranslation(translatedText || "");
           } else {
             const errorData = await response.json();
             console.error(
@@ -247,7 +249,6 @@ const TextBox = () => {
     userInfo.userID,
     currentPage,
     userSettingsUi.translationMode,
-    userSettingsUi.language,
   ]);
 
   useEffect(() => {
