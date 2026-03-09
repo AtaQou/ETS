@@ -18,6 +18,77 @@ import { apiURL } from "utils/consts";
 
 const wordPadding = 20;
 const apiKey = "AIzaSyCgaeL8Nfo0U4ZgQZ9xDRGCOH27-dkj3Sg";
+
+type FocusSentenceResponse = {
+  sentence: string;
+  matchedToken: string;
+};
+
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const createUniqueMarkers = () => {
+  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return {
+    startMarker: `__ETS_START_${suffix}__`,
+    endMarker: `__ETS_END_${suffix}__`,
+  };
+};
+
+const injectMarkersInSentence = (
+  sentence: string,
+  startMarker: string,
+  endMarker: string,
+  primaryTarget: string,
+  fallbackTarget: string
+) => {
+  const tryWrap = (target: string, useWordBoundary = false) => {
+    const cleanedTarget = (target || "").trim();
+    if (!cleanedTarget) return "";
+    const escaped = escapeRegExp(cleanedTarget);
+    const pattern = useWordBoundary ? `\\b${escaped}\\b` : escaped;
+    const regex = new RegExp(pattern, "i");
+    if (!regex.test(sentence)) return "";
+    return sentence.replace(regex, `${startMarker}$&${endMarker}`);
+  };
+
+  return (
+    tryWrap(primaryTarget) ||
+    tryWrap(primaryTarget, true) ||
+    tryWrap(fallbackTarget) ||
+    tryWrap(fallbackTarget, true) ||
+    sentence
+  );
+};
+
+const extractBetweenMarkers = (
+  translatedText: string,
+  startMarker: string,
+  endMarker: string
+) => {
+  const startIndex = translatedText.indexOf(startMarker);
+  const endIndex = translatedText.indexOf(endMarker);
+  if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+    return "";
+  }
+
+  return translatedText
+    .slice(startIndex + startMarker.length, endIndex)
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const removeMarkers = (
+  translatedText: string,
+  startMarker: string,
+  endMarker: string
+) =>
+  translatedText
+    .replace(new RegExp(escapeRegExp(startMarker), "g"), "")
+    .replace(new RegExp(escapeRegExp(endMarker), "g"), "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const TextBox = () => {
   // const { eyeData } = useEyeTrackingData();
   const { eyeData } = useEyeTrackingStore();
@@ -166,8 +237,10 @@ const TextBox = () => {
       userID: string,
       page: number,
       focusBox?: number[]
-    ): Promise<string> => {
-      if (!focusBox || !docID || !userID) return "";
+    ): Promise<FocusSentenceResponse> => {
+      if (!focusBox || !docID || !userID) {
+        return { sentence: "", matchedToken: "" };
+      }
       try {
         const response = await fetch(`${apiURL}/sentence-from-focus`, {
           method: "POST",
@@ -182,11 +255,47 @@ const TextBox = () => {
             focusBox,
           }),
         });
-        if (!response.ok) return "";
+        if (!response.ok) return { sentence: "", matchedToken: "" };
         const data = await response.json();
-        return data?.sentence || "";
+        return {
+          sentence: data?.sentence || "",
+          matchedToken: data?.matchedToken || "",
+        };
       } catch (error) {
         console.error("Error fetching sentence:", error);
+        return { sentence: "", matchedToken: "" };
+      }
+    };
+
+    const translateText = async (text: string) => {
+      if (!text) return "";
+      const targetLanguage = "el";
+      try {
+        const response = await fetch(
+          `https://translation.googleapis.com/language/translate/v2?key=${apiKey}&source=en&target=${targetLanguage}&q=${encodeURIComponent(
+            text
+          )}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error(
+            "Failed to fetch translation:",
+            errorData?.error?.message || response.statusText
+          );
+          return "";
+        }
+        const data = await response.json();
+        return data?.data?.translations?.[0]?.translatedText || "";
+      } catch (error) {
+        console.error("Error:", error);
         return "";
       }
     };
@@ -196,49 +305,65 @@ const TextBox = () => {
       if (currentWord && shouldTranslate) {
         const isSentenceMode = userSettingsUi.translationMode === "sentence";
         const sourceWord = currentWord.word;
-        let sourceSentence = "";
-        if (isSentenceMode) {
-          sourceSentence = await getSentenceFromFocus(
+        const { sentence: sourceSentence, matchedToken } =
+          await getSentenceFromFocus(
             selectedDocID,
             userInfo.userID,
             currentPage,
             currentWord.sourceBox
           );
+
+        // Keep UX useful even when sentence detection fails.
+        if (!sourceSentence) {
+          const fallbackWordTranslation = await translateText(sourceWord);
+          setTranslation(fallbackWordTranslation || sourceWord || "");
+          return;
         }
-        const textToTranslate =
-          isSentenceMode && sourceSentence ? sourceSentence : sourceWord;
-        if (!textToTranslate) return;
 
-        try {
-          const targetLanguage = "el";
-          const response = await fetch(
-            `https://translation.googleapis.com/language/translate/v2?key=${apiKey}&source=en&target=${targetLanguage}&q=${encodeURIComponent(
-              textToTranslate
-            )}`,
-
-            {
-              method: "GET",
-              headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-              },
-            }
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            const translatedText = data?.data?.translations?.[0]?.translatedText;
-            setTranslation(translatedText || "");
-          } else {
-            const errorData = await response.json();
-            console.error(
-              "Failed to fetch translation:",
-              errorData.error.message
-            );
-          }
-        } catch (error) {
-          console.error("Error:", error);
+        if (isSentenceMode) {
+          const translatedSentence = await translateText(sourceSentence);
+          setTranslation(translatedSentence || sourceSentence || "");
+          return;
         }
+
+        const { startMarker, endMarker } = createUniqueMarkers();
+        const sentenceWithMarkers = injectMarkersInSentence(
+          sourceSentence,
+          startMarker,
+          endMarker,
+          matchedToken,
+          sourceWord
+        );
+
+        const translatedSentence = await translateText(sentenceWithMarkers);
+        if (!translatedSentence) {
+          const fallbackWordTranslation = await translateText(sourceWord);
+          setTranslation(fallbackWordTranslation || sourceWord || "");
+          return;
+        }
+
+        const extractedWordTranslation = extractBetweenMarkers(
+          translatedSentence,
+          startMarker,
+          endMarker
+        );
+        if (extractedWordTranslation) {
+          setTranslation(extractedWordTranslation);
+          return;
+        }
+
+        const cleanedSentenceFallback = removeMarkers(
+          translatedSentence,
+          startMarker,
+          endMarker
+        );
+        if (cleanedSentenceFallback) {
+          setTranslation(cleanedSentenceFallback);
+          return;
+        }
+
+        const fallbackWordTranslation = await translateText(sourceWord);
+        setTranslation(fallbackWordTranslation || sourceWord || "");
       }
     };
     fetchTranslation();
