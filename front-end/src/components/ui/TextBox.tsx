@@ -9,7 +9,11 @@ import {
   IScaledWordCoords,
   IWordPositions,
 } from "types/AppTypes";
-import { validateEyeData2, validateHoldTranslation } from "utils/eyeTracking";
+import {
+  getGazePointCoordinates,
+  validateEyeData2,
+  validateHoldTranslation,
+} from "utils/eyeTracking";
 import { calculateScaledPositions } from "utils/functions";
 import useEyeTrackingStore from "store/store";
 import usePrevious from "hooks/usePrevious";
@@ -48,6 +52,7 @@ const TextBox = () => {
   const [translation, setTranslation] = useState<string>("");
   const [coolDown, setCoolDown] = useState<boolean>(false);
   const lastDetectionRunAtRef = useRef<number>(0);
+  const releaseOutsideCounterRef = useRef<number>(0);
 
   useEffect(() => {
     if (wordPositions && wordPositions.length) {
@@ -254,6 +259,60 @@ const TextBox = () => {
       setCoolDown(false);
     }
   }, [prevScrollTop, scrollTop, setShouldTranslate]);
+
+  useEffect(() => {
+    if (!shouldTranslate || !currentWord) {
+      releaseOutsideCounterRef.current = 0;
+      return;
+    }
+
+    const recent = eyeData.slice(-25);
+    if (!recent.length) return;
+
+    const releaseMargin = (userSettingsUi.gazeHitRadiusPx ?? 20) + 12;
+    const { left, top, width, height } = currentWord.wordCoords;
+    let validPoints = 0;
+    let insidePoints = 0;
+
+    for (const gazeSample of recent) {
+      if (!gazeSample.left_gaze_point_validity && !gazeSample.right_gaze_point_validity) {
+        continue;
+      }
+      validPoints += 1;
+      const { pointX, pointY } = getGazePointCoordinates(gazeSample);
+      const isInsideExpandedWord =
+        pointX >= left - releaseMargin &&
+        pointX <= left + width + releaseMargin &&
+        pointY >= top - releaseMargin &&
+        pointY <= top + height + releaseMargin;
+
+      if (isInsideExpandedWord) {
+        insidePoints += 1;
+      }
+    }
+
+    if (!validPoints) return;
+
+    const insideRatio = insidePoints / validPoints;
+    if (insideRatio < 0.2) {
+      releaseOutsideCounterRef.current += 1;
+    } else {
+      releaseOutsideCounterRef.current = 0;
+    }
+
+    // Require two consecutive "outside" checks to avoid flicker.
+    if (releaseOutsideCounterRef.current >= 2) {
+      setShouldTranslate?.(false);
+      setCoolDown(false);
+      releaseOutsideCounterRef.current = 0;
+    }
+  }, [
+    eyeData,
+    shouldTranslate,
+    currentWord,
+    setShouldTranslate,
+    userSettingsUi.gazeHitRadiusPx,
+  ]);
 
   // THIS IS FOR MOCKING THE TRANSLATION POPUP
   // useEffect(() => {
