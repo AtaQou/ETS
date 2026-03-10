@@ -53,49 +53,112 @@ import { GazeData, IScaledWordCoords } from "types/AppTypes";
 //   document.body.appendChild(point);
 // };
 
-export const getGazePointCoordinates = (data: GazeData) => {
-  const screenWidth = window.screen.width;
-  const screenHeight = window.screen.height;
-  const resolution = [screenWidth, screenHeight];
-  let averageX = 0;
-  let averageY = 0;
+const getViewportResolution = () => {
+  const width =
+    window.innerWidth ||
+    document.documentElement.clientWidth ||
+    window.visualViewport?.width ||
+    window.screen.width;
+  const height =
+    window.innerHeight ||
+    document.documentElement.clientHeight ||
+    window.visualViewport?.height ||
+    window.screen.height;
 
+  return [Math.max(1, Math.round(width)), Math.max(1, Math.round(height))];
+};
+
+const getScreenResolution = () => {
+  const width = window.screen.width || window.innerWidth || 1;
+  const height = window.screen.height || window.innerHeight || 1;
+  return [Math.max(1, Math.round(width)), Math.max(1, Math.round(height))];
+};
+
+const getViewportOffsetOnScreen = () => {
+  const screenLeft =
+    typeof window.screenX === "number"
+      ? window.screenX
+      : (window as any).screenLeft || 0;
+  const screenTop =
+    typeof window.screenY === "number"
+      ? window.screenY
+      : (window as any).screenTop || 0;
+
+  const outerWidth = window.outerWidth || window.innerWidth || 0;
+  const outerHeight = window.outerHeight || window.innerHeight || 0;
+  const innerWidth = window.innerWidth || 0;
+  const innerHeight = window.innerHeight || 0;
+
+  // Approximate browser frame/chrome thickness so we can convert absolute
+  // screen coordinates to viewport/client coordinates.
+  const borderX = Math.max(0, (outerWidth - innerWidth) / 2);
+  const verticalChrome = Math.max(0, outerHeight - innerHeight);
+  const titleAndToolbarY = Math.max(0, verticalChrome - borderX);
+
+  return {
+    viewportLeftOnScreen: screenLeft + borderX,
+    viewportTopOnScreen: screenTop + titleAndToolbarY,
+  };
+};
+
+const clampToViewport = (x: number, y: number) => {
+  const [viewportWidth, viewportHeight] = getViewportResolution();
+  return {
+    pointX: Math.min(Math.max(0, Math.round(x)), viewportWidth - 1),
+    pointY: Math.min(Math.max(0, Math.round(y)), viewportHeight - 1),
+  };
+};
+
+const getNormalizedGazePoint = (data: GazeData) => {
   if (data.left_gaze_point_validity && data.right_gaze_point_validity) {
-    averageX = parseFloat(
-      (
+    return {
+      x:
         (data.left_gaze_point_on_display_area[0] +
           data.right_gaze_point_on_display_area[0]) /
-        2
-      ).toFixed(2)
-    );
-
-    averageY = parseFloat(
-      (
+        2,
+      y:
         (data.left_gaze_point_on_display_area[1] +
           data.right_gaze_point_on_display_area[1]) /
-        2
-      ).toFixed(2)
-    );
-  } else if (data.left_gaze_point_validity) {
-    averageX = data.left_gaze_point_on_display_area[0];
-    averageY = data.left_gaze_point_on_display_area[1];
-  } else if (data.right_gaze_point_validity) {
-    averageX = data.right_gaze_point_on_display_area[0];
-    averageY = data.right_gaze_point_on_display_area[1];
+        2,
+    };
   }
 
-  if (data.left_gaze_point_validity || data.right_gaze_point_validity) {
-    averageX = Math.min(
-      Math.max(0, Math.round(averageX * resolution[0])),
-      resolution[0]
-    );
-    averageY = Math.min(
-      Math.max(0, Math.round(averageY * resolution[1])),
-      resolution[1]
-    );
+  if (data.left_gaze_point_validity) {
+    return {
+      x: data.left_gaze_point_on_display_area[0],
+      y: data.left_gaze_point_on_display_area[1],
+    };
   }
 
-  return { pointX: averageX, pointY: averageY };
+  if (data.right_gaze_point_validity) {
+    return {
+      x: data.right_gaze_point_on_display_area[0],
+      y: data.right_gaze_point_on_display_area[1],
+    };
+  }
+
+  return null;
+};
+
+export const getGazePointCoordinates = (data: GazeData) => {
+  const normalized = getNormalizedGazePoint(data);
+  if (!normalized) {
+    return { pointX: 0, pointY: 0 };
+  }
+
+  const [screenWidth, screenHeight] = getScreenResolution();
+  const { viewportLeftOnScreen, viewportTopOnScreen } =
+    getViewportOffsetOnScreen();
+
+  // Tobii gives normalized points on the full display area [0,1].
+  // Convert to absolute screen pixels first, then to viewport/client pixels.
+  const absoluteScreenX = normalized.x * screenWidth;
+  const absoluteScreenY = normalized.y * screenHeight;
+
+  return clampToViewport(
+    absoluteScreenX - viewportLeftOnScreen,
+    absoluteScreenY - viewportTopOnScreen
+  );
 };
 // This is for batches of gaze data and makes the circle smoother.
 export const getAverageGazePointCoordinates2 = (dataArray: GazeData[]) => {
@@ -103,51 +166,12 @@ export const getAverageGazePointCoordinates2 = (dataArray: GazeData[]) => {
   let totalY = 0;
   let count = 0;
 
-  const screenWidth = window.screen.width;
-  const screenHeight = window.screen.height;
-  const resolution = [screenWidth, screenHeight];
-
   dataArray.forEach((data) => {
-    let averageX = 0;
-    let averageY = 0;
-    if (data.left_gaze_point_validity && data.right_gaze_point_validity) {
-      averageX = parseFloat(
-        (
-          (data.left_gaze_point_on_display_area[0] +
-            data.right_gaze_point_on_display_area[0]) /
-          2
-        ).toFixed(2)
-      );
-
-      averageY = parseFloat(
-        (
-          (data.left_gaze_point_on_display_area[1] +
-            data.right_gaze_point_on_display_area[1]) /
-          2
-        ).toFixed(2)
-      );
-    } else if (data.left_gaze_point_validity) {
-      averageX = data.left_gaze_point_on_display_area[0];
-      averageY = data.left_gaze_point_on_display_area[1];
-    } else if (data.right_gaze_point_validity) {
-      averageX = data.right_gaze_point_on_display_area[0];
-      averageY = data.right_gaze_point_on_display_area[1];
-    }
-
-    if (data.left_gaze_point_validity || data.right_gaze_point_validity) {
-      averageX = Math.min(
-        Math.max(0, Math.round(averageX * resolution[0])),
-        resolution[0]
-      );
-      averageY = Math.min(
-        Math.max(0, Math.round(averageY * resolution[1])),
-        resolution[1]
-      );
-    }
-
-    totalX += averageX;
-    totalY += averageY;
-    count++;
+    const { pointX, pointY } = getGazePointCoordinates(data);
+    if (!data.left_gaze_point_validity && !data.right_gaze_point_validity) return;
+    totalX += pointX;
+    totalY += pointY;
+    count += 1;
   });
 
   return count > 0

@@ -23,16 +23,6 @@ const App: React.FC = () => {
         }
     };
 
-    const exitFullscreen = () => {
-        if (document.fullscreenElement) {
-            document.exitFullscreen().catch((err) => {
-                console.log(
-                    `Error attempting to disable full-screen mode: ${err.message} (${err.name})`
-                );
-            });
-        }
-    };
-
     if (!context) {
         throw new Error("App must be used within a ContextProvider");
     }
@@ -44,10 +34,8 @@ const App: React.FC = () => {
     // useMockData();
 
     useEffect(() => {
-        if (isCalibrating) {
+        if (isCalibrating && !document.fullscreenElement) {
             toggleFullScreen();
-        } else {
-            exitFullscreen();
         }
     }, [isCalibrating]);
 

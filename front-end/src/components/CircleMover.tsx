@@ -37,7 +37,7 @@ const CircleMover: React.FC = () => {
         opacity: 0.3,
         left: `${avgPosition.x}px`,
         top: `${avgPosition.y}px`,
-        position: "absolute",
+        position: "fixed",
         width: "25px",
         height: "25px",
         borderRadius: "50%",

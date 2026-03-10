@@ -12,7 +12,6 @@ import {
 import { validateEyeData2, validateHoldTranslation } from "utils/eyeTracking";
 import { calculateScaledPositions } from "utils/functions";
 import useEyeTrackingStore from "store/store";
-import useEyeTracking from "../../hooks/useEyeTracking";
 import usePrevious from "hooks/usePrevious";
 import { apiURL } from "utils/consts";
 
@@ -32,9 +31,6 @@ const TextBox = () => {
     userInfo,
   } = useContext<IContextProps>(Context);
   const prevScrollTop = usePrevious(scrollTop);
-
-  useEyeTracking();
-  // useMockData();
 
   const { wordPositions } = useWordPositions();
 
