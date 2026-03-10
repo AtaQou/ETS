@@ -6,7 +6,6 @@ import Footer from "./components/ui/Footer";
 import Header from "./components/ui/Header";
 import useEyeTracking from "./hooks/useEyeTracking";
 import CalibrationOverlay from "components/CalibrationOverlay";
-// import CircleMover from "components/CircleMover";
 import TextBox from "components/ui/TextBox";
 import useMockData from "hooks/useMockData";
 import CircleMover from "components/CircleMover";
@@ -15,7 +14,7 @@ import WordBoxesOverlay from "./components/WordBoxesOverlay"; // ✅ ΝΕΟ IMPO
 
 const App: React.FC = () => {
     const context = useContext(Context);
-    const { loading, isMenuOpen, file } = context;
+    const { loading, isMenuOpen, file, userSettingsUi } = context;
 
     const toggleFullScreen = () => {
         const elem = document.documentElement;
@@ -79,7 +78,7 @@ const App: React.FC = () => {
           </div>
         ))}
       </div> */}
-            {/* <CircleMover /> */}
+            {userSettingsUi.showGazeCursor && <CircleMover />}
             {!loading && !isMenuOpen && file?.size !== 0 && <TextBox />}
             {}
             {!isLoggedIn && <UserProfile />}

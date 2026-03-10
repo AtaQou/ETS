@@ -21,6 +21,7 @@ const Settings: FC = () => {
         translationMode = "word",
         showBoxes = false,
         hoverTranslateDebug = false,
+        showGazeCursor = false,
     } = userSettingsUi;
     const [loading, setLoading] = useState(false);
     const isDarkTheme = userSettingsApi.theme === "dark";
@@ -288,6 +289,23 @@ const Settings: FC = () => {
                                 "hoverTranslateDebug",
                                 e.target.checked as any
                             )
+                        }
+                    />
+                </div>
+
+                {/* Gaze cursor visualization */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Show gaze cursor
+                    </label>
+                    <input
+                        type='checkbox'
+                        checked={!!showGazeCursor}
+                        onChange={(e) =>
+                            handleSettingsChange("showGazeCursor", e.target.checked as any)
                         }
                     />
                 </div>

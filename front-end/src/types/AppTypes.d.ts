@@ -96,6 +96,7 @@ export interface IUserSettings {
     translationMode: "word" | "sentence";
     showBoxes?: boolean; // νέο, optional για να μην σπάσει παλιό state
     hoverTranslateDebug?: boolean;
+    showGazeCursor?: boolean;
 }
 
 

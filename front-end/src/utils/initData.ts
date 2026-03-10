@@ -18,6 +18,7 @@ export const initSettings: IUserSettings = {
     translationMode: "word",
     showBoxes: false, // νέο default
     hoverTranslateDebug: false,
+    showGazeCursor: false,
 };
 
 export const initPdfDimensions = {
