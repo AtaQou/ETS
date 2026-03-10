@@ -2,7 +2,7 @@ import TranslationPopup from "components/TranslationPopup";
 import { Context } from "context/Context";
 // import { useEyeTrackingData } from "context/EyeTrackingContext";
 import { useWordPositions } from "hooks/useWordPositions";
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   IContextProps,
   ID,
@@ -47,6 +47,7 @@ const TextBox = () => {
     useState<IScaledWordCoords[]>();
   const [translation, setTranslation] = useState<string>("");
   const [coolDown, setCoolDown] = useState<boolean>(false);
+  const lastDetectionRunAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (wordPositions && wordPositions.length) {
@@ -87,6 +88,12 @@ const TextBox = () => {
 
   useEffect(() => {
     if (coolDown || userSettingsUi.hoverTranslateDebug) return;
+    if (shouldTranslate) return;
+
+    const now = performance.now();
+    if (now - lastDetectionRunAtRef.current < 45) return;
+    lastDetectionRunAtRef.current = now;
+
     const baseGazeSamples = userSettingsUi.baseGazeSamples ?? 60;
     if (
       pageMounted &&
@@ -102,16 +109,6 @@ const TextBox = () => {
           gazeRadiusPx: userSettingsUi.gazeHitRadiusPx ?? 20,
         }
       );
-      const currentTime = new Date();
-      let milli = currentTime.getMilliseconds();
-      let f_milli = String(milli).padStart(3, "0");
-      console.log(
-        "word detected",
-        detectedWord.word,
-
-        `${currentTime.getHours()}:${currentTime.getMinutes()}:${currentTime.getSeconds()}.${f_milli}`
-      );
-      console.log({ detectedWord: detectedWord.word });
 
       if (detectedWord.word) {
         setCurrentWord(detectedWord);
@@ -252,18 +249,6 @@ const TextBox = () => {
   ]);
 
   useEffect(() => {
-    if (shouldTranslate) {
-      const currentTime = new Date();
-      let milli = currentTime.getMilliseconds();
-      let f_milli = String(milli).padStart(3, "0");
-      console.log(
-        "translation pops",
-        `${currentTime.getHours()}:${currentTime.getMinutes()}:${currentTime.getSeconds()}.${f_milli}`
-      );
-    }
-  }, [setShouldTranslate, shouldTranslate]);
-
-  useEffect(() => {
     if (scrollTop && prevScrollTop !== scrollTop) {
       setShouldTranslate?.(false);
       setCoolDown(false);
@@ -294,8 +279,6 @@ const TextBox = () => {
       }
     }
   }, [eyeData]);
-
-  console.log({ coolDown, shouldTranslate });
 
   return (
     <>

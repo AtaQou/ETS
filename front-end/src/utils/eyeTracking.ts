@@ -124,6 +124,21 @@ const getViewportOffsetOnScreen = () => {
   };
 };
 
+const createGazePointMapper = () => {
+  const [screenWidth, screenHeight] = getScreenResolution();
+  const { viewportLeftOnScreen, viewportTopOnScreen } =
+    getViewportOffsetOnScreen();
+
+  return (normalizedX: number, normalizedY: number) => {
+    const absoluteScreenX = normalizedX * screenWidth;
+    const absoluteScreenY = normalizedY * screenHeight;
+    return clampToViewport(
+      absoluteScreenX - viewportLeftOnScreen,
+      absoluteScreenY - viewportTopOnScreen + gazeYOffsetPx
+    );
+  };
+};
+
 const clampToViewport = (x: number, y: number) => {
   const [viewportWidth, viewportHeight] = getViewportResolution();
   return {
@@ -168,20 +183,8 @@ export const getGazePointCoordinates = (data: GazeData) => {
   if (!normalized) {
     return { pointX: 0, pointY: 0 };
   }
-
-  const [screenWidth, screenHeight] = getScreenResolution();
-  const { viewportLeftOnScreen, viewportTopOnScreen } =
-    getViewportOffsetOnScreen();
-
-  // Tobii gives normalized points on the full display area [0,1].
-  // Convert to absolute screen pixels first, then to viewport/client pixels.
-  const absoluteScreenX = normalized.x * screenWidth;
-  const absoluteScreenY = normalized.y * screenHeight;
-
-  return clampToViewport(
-    absoluteScreenX - viewportLeftOnScreen,
-    absoluteScreenY - viewportTopOnScreen + gazeYOffsetPx
-  );
+  const mapToViewport = createGazePointMapper();
+  return mapToViewport(normalized.x, normalized.y);
 };
 // This is for batches of gaze data and makes the circle smoother.
 export const getAverageGazePointCoordinates2 = (dataArray: GazeData[]) => {
@@ -214,9 +217,6 @@ export const validateEyeData = (
   const { left, top, right, bottom } = bounds;
   for (const dato of eyeData) {
     const { pointX, pointY } = getGazePointCoordinates(dato);
-    console.log("Average gaze point", pointX, pointY);
-    console.log("Tis leksis", left, top, right, bottom);
-    // console.log('Average gaze point + 0.1', pointX + 0.1, pointY + 0.1)
     if (pointX < left || pointX > right || pointY < top || pointY > bottom)
       return false;
   }
@@ -287,56 +287,79 @@ export const validateEyeData2 = (
         score: number;
       }
     | undefined;
+  const maxWordLength = wordPositions.reduce(
+    (maxLen, wp) => Math.max(maxLen, wp.word?.length || 0),
+    0
+  );
+  const gazePointsToConsider =
+    baseGazePoints + Math.max(0, maxWordLength - 1) * additionalGazePointsPerLetter;
+  const relevantEyeData = eyeData.slice(
+    -Math.min(gazePointsToConsider, eyeData.length)
+  );
+  if (!relevantEyeData.length) {
+    return { word: "", wordCoords: { left: 0, top: 0, width: 0, height: 0 } };
+  }
 
-  for (let wordData of wordPositions) {
-    const { word, wordCoords } = wordData;
-    const { left, top, width, height } = wordCoords;
+  const mapToViewport = createGazePointMapper();
+  const gazePoints: { x: number; y: number }[] = [];
+  let avgGazeX = 0;
+  let avgGazeY = 0;
 
-    const gazePointsToConsider =
-      baseGazePoints + (word.length - 1) * additionalGazePointsPerLetter;
+  for (const rel of relevantEyeData) {
+    const normalized = getNormalizedGazePoint(rel);
+    if (!normalized) continue;
+    const { pointX, pointY } = mapToViewport(normalized.x, normalized.y);
+    gazePoints.push({ x: pointX, y: pointY });
+    avgGazeX += pointX;
+    avgGazeY += pointY;
+  }
 
-    const relevantEyeData = eyeData.slice(
-      -Math.min(gazePointsToConsider, eyeData.length)
-    );
-    if (!relevantEyeData.length) continue;
+  if (!gazePoints.length) {
+    return { word: "", wordCoords: { left: 0, top: 0, width: 0, height: 0 } };
+  }
 
-    let hitsInsideRadius = 0;
-    let totalDistanceToBox = 0;
-    let validPointsCount = 0;
-    let gazeCenterX = 0;
-    let gazeCenterY = 0;
+  avgGazeX /= gazePoints.length;
+  avgGazeY /= gazePoints.length;
 
-    for (const rel of relevantEyeData) {
-      if (!rel.left_gaze_point_validity && !rel.right_gaze_point_validity) {
-        continue;
-      }
-
-      const { pointX, pointY } = getGazePointCoordinates(rel);
-      const distanceToBox = getDistanceFromPointToBox(pointX, pointY, {
+  const candidateLimit = 10;
+  const coarseCandidates = wordPositions
+    .map((wordData) => {
+      const { left, top, width, height } = wordData.wordCoords;
+      const edgeDistance = getDistanceFromPointToBox(avgGazeX, avgGazeY, {
         left,
         top,
         right: left + width,
         bottom: top + height,
       });
+      return { wordData, edgeDistance };
+    })
+    .sort((a, b) => a.edgeDistance - b.edgeDistance)
+    .slice(0, candidateLimit);
 
+  for (const candidate of coarseCandidates) {
+    const wordData = candidate.wordData;
+    const { left, top, width, height } = wordData.wordCoords;
+
+    let hitsInsideRadius = 0;
+    let totalDistanceToBox = 0;
+
+    for (const point of gazePoints) {
+      const distanceToBox = getDistanceFromPointToBox(point.x, point.y, {
+        left,
+        top,
+        right: left + width,
+        bottom: top + height,
+      });
       totalDistanceToBox += distanceToBox;
-      gazeCenterX += pointX;
-      gazeCenterY += pointY;
-      validPointsCount += 1;
-
       if (distanceToBox <= gazeRadiusPx) {
         hitsInsideRadius += 1;
       }
     }
 
-    if (!validPointsCount) continue;
-
-    const hitRatio = hitsInsideRadius / validPointsCount;
+    const hitRatio = hitsInsideRadius / gazePoints.length;
     if (hitRatio < minHitRatio) continue;
 
-    const avgDistanceToBox = totalDistanceToBox / validPointsCount;
-    const avgGazeX = gazeCenterX / validPointsCount;
-    const avgGazeY = gazeCenterY / validPointsCount;
+    const avgDistanceToBox = totalDistanceToBox / gazePoints.length;
     const distanceToWordCenter = getDistanceFromPointToBoxCenter(avgGazeX, avgGazeY, {
       left,
       top,
@@ -344,7 +367,6 @@ export const validateEyeData2 = (
       height,
     });
 
-    // Higher hit ratio is better, then prefer smaller edge/center distance.
     const score =
       (1 - hitRatio) * 100 + avgDistanceToBox * 0.7 + distanceToWordCenter * 0.3;
 

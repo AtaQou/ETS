@@ -1,5 +1,5 @@
 // import { useEyeTrackingData } from "context/EyeTrackingContext";
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import useEyeTrackingStore from "store/store";
 import { Context } from "context/Context";
 import { getAverageGazePointCoordinates2 } from "utils/eyeTracking";
@@ -14,22 +14,15 @@ const CircleMover: React.FC = () => {
   });
   const gazeRadiusPx = Math.max(0, Math.min(100, userSettingsUi.gazeHitRadiusPx ?? 20));
   const circleDiameter = Math.max(24, gazeRadiusPx * 2);
+  const lastRenderAtRef = useRef<number>(0);
 
   useEffect(() => {
+    const now = performance.now();
+    if (now - lastRenderAtRef.current < 16) return;
+    lastRenderAtRef.current = now;
+
     const recentData = eyeData.slice(-5); // get the last 5 data points
     const { pointX, pointY } = getAverageGazePointCoordinates2(recentData);
-
-    // ! This if is for single data gaze point creation
-    // const recentData = eyeData[eyeData.length - 1];
-    // const { pointX, pointY } = getGazePointCoordinates(recentData);
-    // if (recentData.length === 0) return;
-    const currentTime = new Date();
-    let milli = currentTime.getMilliseconds();
-    let f_milli = String(milli).padStart(3, "0");
-    console.log(
-      "circle rendered!!!!!!!!",
-      `${currentTime.getHours()}:${currentTime.getMinutes()}:${currentTime.getSeconds()}.${f_milli}`
-    );
 
     setAvgPosition({ x: pointX, y: pointY });
   }, [eyeData]);
