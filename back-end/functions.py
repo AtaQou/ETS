@@ -113,9 +113,15 @@ def resize_pil_image(image, scaling_factor):
 
 
 def process_single_page(page_num, pdf_content=None, scaling_factor=1.0, ):
-    # Those multipliers are here because of different scaling in the server and the client side.
-    final_scale_factor_width = scaling_factor * 1.16951
-    final_scale_factor_height = scaling_factor * 1.18566176
+    # Use one consistent scale factor on both axes to keep OCR boxes aligned.
+    try:
+        final_scale_factor = float(scaling_factor)
+    except (TypeError, ValueError):
+        final_scale_factor = 1.0
+
+    if final_scale_factor <= 0:
+        final_scale_factor = 1.0
+
     page_images = convert_from_bytes(
         pdf_content, first_page=page_num + 1, last_page=page_num + 1
     )
@@ -123,10 +129,10 @@ def process_single_page(page_num, pdf_content=None, scaling_factor=1.0, ):
     if page_images:
         original_image = page_images[0]
         print(original_image.width, original_image.height)
-        if scaling_factor != 1:
+        if final_scale_factor != 1:
             scaled_image = original_image.resize(
-                (int(original_image.width * final_scale_factor_width),
-                 int(original_image.height * final_scale_factor_height)),
+                (int(original_image.width * final_scale_factor),
+                 int(original_image.height * final_scale_factor)),
                 Image.ANTIALIAS
             )
 
