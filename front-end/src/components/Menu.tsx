@@ -41,6 +41,7 @@ function Menu({ onCloseMenu }: MenuProps) {
     hoverTranslateDebug,
     showGazeCursor,
     gazeYOffsetPx,
+    gazeHitRadiusPx,
   } = userSettingsUi;
   const { userID } = userInfo;
   const [selectedOption, setSelectedOption] = useState("settings");
@@ -89,6 +90,7 @@ function Menu({ onCloseMenu }: MenuProps) {
               hoverTranslateDebug,
               showGazeCursor,
               gazeYOffsetPx,
+              gazeHitRadiusPx,
             });
             triggerSnackbar({
               message: "Settings saved successfully!",

@@ -241,12 +241,53 @@ const isPointInsideBox = (
   return x >= left && x <= right && y >= top && y <= bottom;
 };
 
+const getDistanceFromPointToBox = (
+  x: number,
+  y: number,
+  { left, top, right, bottom }: { left: number; top: number; right: number; bottom: number }
+) => {
+  const dx = Math.max(left - x, 0, x - right);
+  const dy = Math.max(top - y, 0, y - bottom);
+  return Math.hypot(dx, dy);
+};
+
+const getDistanceFromPointToBoxCenter = (
+  x: number,
+  y: number,
+  { left, top, width, height }: { left: number; top: number; width: number; height: number }
+) => {
+  const centerX = left + width / 2;
+  const centerY = top + height / 2;
+  return Math.hypot(x - centerX, y - centerY);
+};
+
+type GazeMatchOptions = {
+  gazeRadiusPx?: number;
+  minHitRatio?: number;
+};
+
 export const validateEyeData2 = (
   eyeData: GazeData[],
   wordPositions: IScaledWordCoords[],
-  baseGazePoints = 60
+  baseGazePoints = 60,
+  options?: GazeMatchOptions
 ) => {
   const additionalGazePointsPerLetter = 10;
+  const gazeRadiusPx = Math.max(
+    0,
+    Math.min(100, Math.round(options?.gazeRadiusPx ?? 20))
+  );
+  const minHitRatio = Math.max(
+    0,
+    Math.min(1, options?.minHitRatio ?? 0.55)
+  );
+  let bestMatch:
+    | {
+        wordData: IScaledWordCoords;
+        score: number;
+      }
+    | undefined;
+
   for (let wordData of wordPositions) {
     const { word, wordCoords } = wordData;
     const { left, top, width, height } = wordCoords;
@@ -257,21 +298,65 @@ export const validateEyeData2 = (
     const relevantEyeData = eyeData.slice(
       -Math.min(gazePointsToConsider, eyeData.length)
     );
+    if (!relevantEyeData.length) continue;
 
-    const allPointsInside = relevantEyeData.every((rel) => {
+    let hitsInsideRadius = 0;
+    let totalDistanceToBox = 0;
+    let validPointsCount = 0;
+    let gazeCenterX = 0;
+    let gazeCenterY = 0;
+
+    for (const rel of relevantEyeData) {
+      if (!rel.left_gaze_point_validity && !rel.right_gaze_point_validity) {
+        continue;
+      }
+
       const { pointX, pointY } = getGazePointCoordinates(rel);
-      return isPointInsideBox(pointX, pointY, {
-        left: left,
-        top: top,
+      const distanceToBox = getDistanceFromPointToBox(pointX, pointY, {
+        left,
+        top,
         right: left + width,
         bottom: top + height,
       });
+
+      totalDistanceToBox += distanceToBox;
+      gazeCenterX += pointX;
+      gazeCenterY += pointY;
+      validPointsCount += 1;
+
+      if (distanceToBox <= gazeRadiusPx) {
+        hitsInsideRadius += 1;
+      }
+    }
+
+    if (!validPointsCount) continue;
+
+    const hitRatio = hitsInsideRadius / validPointsCount;
+    if (hitRatio < minHitRatio) continue;
+
+    const avgDistanceToBox = totalDistanceToBox / validPointsCount;
+    const avgGazeX = gazeCenterX / validPointsCount;
+    const avgGazeY = gazeCenterY / validPointsCount;
+    const distanceToWordCenter = getDistanceFromPointToBoxCenter(avgGazeX, avgGazeY, {
+      left,
+      top,
+      width,
+      height,
     });
 
-    if (allPointsInside) {
-      return wordData;
+    // Higher hit ratio is better, then prefer smaller edge/center distance.
+    const score =
+      (1 - hitRatio) * 100 + avgDistanceToBox * 0.7 + distanceToWordCenter * 0.3;
+
+    if (!bestMatch || score < bestMatch.score) {
+      bestMatch = { wordData, score };
     }
   }
+
+  if (bestMatch) {
+    return bestMatch.wordData;
+  }
+
   return { word: "", wordCoords: { left: 0, top: 0, width: 0, height: 0 } };
 };
 

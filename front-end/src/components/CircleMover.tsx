@@ -1,15 +1,19 @@
 // import { useEyeTrackingData } from "context/EyeTrackingContext";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useContext } from "react";
 import useEyeTrackingStore from "store/store";
+import { Context } from "context/Context";
 import { getAverageGazePointCoordinates2 } from "utils/eyeTracking";
 
 const CircleMover: React.FC = () => {
   // const { eyeData } = useEyeTrackingData();
   const { eyeData } = useEyeTrackingStore();
+  const { userSettingsUi } = useContext(Context);
   const [avgPosition, setAvgPosition] = useState<{ x: number; y: number }>({
     x: 0,
     y: 0,
   });
+  const gazeRadiusPx = Math.max(0, Math.min(100, userSettingsUi.gazeHitRadiusPx ?? 20));
+  const circleDiameter = Math.max(24, gazeRadiusPx * 2);
 
   useEffect(() => {
     const recentData = eyeData.slice(-5); // get the last 5 data points
@@ -38,8 +42,8 @@ const CircleMover: React.FC = () => {
         left: `${avgPosition.x}px`,
         top: `${avgPosition.y}px`,
         position: "fixed",
-        width: "25px",
-        height: "25px",
+        width: `${circleDiameter}px`,
+        height: `${circleDiameter}px`,
         borderRadius: "50%",
         border: "2px solid rgb(59 130 246)",
         transform: "translate(-50%, -50%)",

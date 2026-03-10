@@ -98,6 +98,7 @@ export interface IUserSettings {
     hoverTranslateDebug?: boolean;
     showGazeCursor?: boolean;
     gazeYOffsetPx?: number;
+    gazeHitRadiusPx?: number;
 }
 
 

@@ -23,6 +23,7 @@ const Settings: FC = () => {
         hoverTranslateDebug = false,
         showGazeCursor = false,
         gazeYOffsetPx = 8,
+        gazeHitRadiusPx = 20,
     } = userSettingsUi;
     const [loading, setLoading] = useState(false);
     const isDarkTheme = userSettingsApi.theme === "dark";
@@ -39,6 +40,9 @@ const Settings: FC = () => {
             newValue = Math.max(1, Math.round(value as number));
         }
         if (key === "gazeYOffsetPx") {
+            newValue = Math.max(0, Math.min(100, Math.round(value as number)));
+        }
+        if (key === "gazeHitRadiusPx") {
             newValue = Math.max(0, Math.min(100, Math.round(value as number)));
         }
         if (setUserSettingsUi) {
@@ -346,6 +350,45 @@ const Settings: FC = () => {
                                 if (Number.isNaN(raw)) return;
                                 const clamped = Math.max(0, Math.min(100, raw));
                                 handleSettingsChange("gazeYOffsetPx", clamped);
+                            }}
+                            className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
+                        />
+                        <span className='ml-2 text-base'>px</span>
+                    </div>
+                </div>
+
+                {/* Gaze hit radius */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Gaze hit radius
+                    </label>
+                    <div
+                        className='flex items-center'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        <input
+                            type='range'
+                            min='0'
+                            max='100'
+                            value={gazeHitRadiusPx}
+                            onChange={(e) =>
+                                handleSettingsChange("gazeHitRadiusPx", Number(e.target.value))
+                            }
+                            className='slider text-gray-900 p-1 h-10 rounded border border-gray-300'
+                        />
+                        <input
+                            type='number'
+                            min={0}
+                            max={100}
+                            value={gazeHitRadiusPx}
+                            onChange={(e) => {
+                                const raw = Number(e.target.value);
+                                if (Number.isNaN(raw)) return;
+                                const clamped = Math.max(0, Math.min(100, raw));
+                                handleSettingsChange("gazeHitRadiusPx", clamped);
                             }}
                             className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
                         />

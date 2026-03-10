@@ -20,6 +20,7 @@ export const initSettings: IUserSettings = {
     hoverTranslateDebug: false,
     showGazeCursor: false,
     gazeYOffsetPx: 8,
+    gazeHitRadiusPx: 20,
 };
 
 export const initPdfDimensions = {

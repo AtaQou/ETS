@@ -97,7 +97,10 @@ const TextBox = () => {
       const detectedWord = validateEyeData2(
         eyeData,
         wordsScreenPositions,
-        baseGazeSamples
+        baseGazeSamples,
+        {
+          gazeRadiusPx: userSettingsUi.gazeHitRadiusPx ?? 20,
+        }
       );
       const currentTime = new Date();
       let milli = currentTime.getMilliseconds();
@@ -125,6 +128,7 @@ const TextBox = () => {
     coolDown,
     userSettingsUi.hoverTranslateDebug,
     userSettingsUi.baseGazeSamples,
+    userSettingsUi.gazeHitRadiusPx,
   ]);
 
   useEffect(() => {
