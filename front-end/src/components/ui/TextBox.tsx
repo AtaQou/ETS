@@ -10,7 +10,6 @@ import {
   IWordPositions,
 } from "types/AppTypes";
 import {
-  getGazePointCoordinates,
   validateEyeData2,
   validateHoldTranslation,
 } from "utils/eyeTracking";
@@ -52,7 +51,6 @@ const TextBox = () => {
   const [translation, setTranslation] = useState<string>("");
   const [coolDown, setCoolDown] = useState<boolean>(false);
   const lastDetectionRunAtRef = useRef<number>(0);
-  const releaseOutsideCounterRef = useRef<number>(0);
 
   useEffect(() => {
     if (wordPositions && wordPositions.length) {
@@ -93,7 +91,6 @@ const TextBox = () => {
 
   useEffect(() => {
     if (coolDown || userSettingsUi.hoverTranslateDebug) return;
-    if (shouldTranslate) return;
 
     const now = performance.now();
     if (now - lastDetectionRunAtRef.current < 45) return;
@@ -116,8 +113,20 @@ const TextBox = () => {
       );
 
       if (detectedWord.word) {
-        setCurrentWord(detectedWord);
-        setShouldTranslate?.(true);
+        const sameAsCurrentWord =
+          currentWord &&
+          detectedWord.word === currentWord.word &&
+          Math.abs(detectedWord.wordCoords.left - currentWord.wordCoords.left) < 1 &&
+          Math.abs(detectedWord.wordCoords.top - currentWord.wordCoords.top) < 1 &&
+          Math.abs(detectedWord.wordCoords.width - currentWord.wordCoords.width) < 1 &&
+          Math.abs(detectedWord.wordCoords.height - currentWord.wordCoords.height) < 1;
+
+        if (!sameAsCurrentWord) {
+          setCurrentWord(detectedWord);
+          if (!shouldTranslate) {
+            setShouldTranslate?.(true);
+          }
+        }
       }
     }
   }, [
@@ -127,6 +136,7 @@ const TextBox = () => {
     wordsScreenPositions,
     setShouldTranslate,
     shouldTranslate,
+    currentWord,
     coolDown,
     userSettingsUi.hoverTranslateDebug,
     userSettingsUi.baseGazeSamples,
@@ -259,60 +269,6 @@ const TextBox = () => {
       setCoolDown(false);
     }
   }, [prevScrollTop, scrollTop, setShouldTranslate]);
-
-  useEffect(() => {
-    if (!shouldTranslate || !currentWord) {
-      releaseOutsideCounterRef.current = 0;
-      return;
-    }
-
-    const recent = eyeData.slice(-25);
-    if (!recent.length) return;
-
-    const releaseMargin = (userSettingsUi.gazeHitRadiusPx ?? 20) + 12;
-    const { left, top, width, height } = currentWord.wordCoords;
-    let validPoints = 0;
-    let insidePoints = 0;
-
-    for (const gazeSample of recent) {
-      if (!gazeSample.left_gaze_point_validity && !gazeSample.right_gaze_point_validity) {
-        continue;
-      }
-      validPoints += 1;
-      const { pointX, pointY } = getGazePointCoordinates(gazeSample);
-      const isInsideExpandedWord =
-        pointX >= left - releaseMargin &&
-        pointX <= left + width + releaseMargin &&
-        pointY >= top - releaseMargin &&
-        pointY <= top + height + releaseMargin;
-
-      if (isInsideExpandedWord) {
-        insidePoints += 1;
-      }
-    }
-
-    if (!validPoints) return;
-
-    const insideRatio = insidePoints / validPoints;
-    if (insideRatio < 0.2) {
-      releaseOutsideCounterRef.current += 1;
-    } else {
-      releaseOutsideCounterRef.current = 0;
-    }
-
-    // Require two consecutive "outside" checks to avoid flicker.
-    if (releaseOutsideCounterRef.current >= 2) {
-      setShouldTranslate?.(false);
-      setCoolDown(false);
-      releaseOutsideCounterRef.current = 0;
-    }
-  }, [
-    eyeData,
-    shouldTranslate,
-    currentWord,
-    setShouldTranslate,
-    userSettingsUi.gazeHitRadiusPx,
-  ]);
 
   // THIS IS FOR MOCKING THE TRANSLATION POPUP
   // useEffect(() => {
