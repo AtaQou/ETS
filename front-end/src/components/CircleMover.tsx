@@ -12,8 +12,10 @@ const CircleMover: React.FC = () => {
     x: 0,
     y: 0,
   });
+  const gazeDetectionMode = userSettingsUi.gazeDetectionMode ?? "circle";
+  const isCircleMode = gazeDetectionMode === "circle";
   const gazeRadiusPx = Math.max(0, Math.min(100, userSettingsUi.gazeHitRadiusPx ?? 20));
-  const circleDiameter = Math.max(24, gazeRadiusPx * 2);
+  const circleDiameter = isCircleMode ? Math.max(24, gazeRadiusPx * 2) : 10;
   const lastRenderAtRef = useRef<number>(0);
 
   useEffect(() => {
@@ -31,19 +33,22 @@ const CircleMover: React.FC = () => {
     <div
       className='circle'
       style={{
-        opacity: 0.3,
+        opacity: isCircleMode ? 0.3 : 0.9,
         left: `${avgPosition.x}px`,
         top: `${avgPosition.y}px`,
         position: "fixed",
         width: `${circleDiameter}px`,
         height: `${circleDiameter}px`,
         borderRadius: "50%",
-        border: "2px solid rgb(59 130 246)",
+        border: isCircleMode ? "2px solid rgb(59 130 246)" : "none",
         transform: "translate(-50%, -50%)",
         zIndex: 999,
+        pointerEvents: "none",
         transition: "left 0.1s ease, top 0.1s ease",
-        background:
-          "radial-gradient(circle, rgba(59,130,246,0) 0%, rgba(59,130,246,0.6) 40%, rgba(59,130,246,0) 100%)",
+        boxShadow: isCircleMode ? "none" : "0 0 0 2px rgba(59,130,246,0.25)",
+        background: isCircleMode
+          ? "radial-gradient(circle, rgba(59,130,246,0) 0%, rgba(59,130,246,0.6) 40%, rgba(59,130,246,0) 100%)"
+          : "rgb(59 130 246)",
       }}
     ></div>
   );

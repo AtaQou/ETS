@@ -40,6 +40,7 @@ function Menu({ onCloseMenu }: MenuProps) {
     showBoxes,
     hoverTranslateDebug,
     showGazeCursor,
+    gazeDetectionMode,
     gazeYOffsetPx,
     gazeHitRadiusPx,
   } = userSettingsUi;
@@ -89,6 +90,7 @@ function Menu({ onCloseMenu }: MenuProps) {
               showBoxes,
               hoverTranslateDebug,
               showGazeCursor,
+              gazeDetectionMode,
               gazeYOffsetPx,
               gazeHitRadiusPx,
             });

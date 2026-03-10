@@ -264,6 +264,7 @@ const getDistanceFromPointToBoxCenter = (
 type GazeMatchOptions = {
   gazeRadiusPx?: number;
   minHitRatio?: number;
+  mode?: "point" | "circle";
 };
 
 export const validateEyeData2 = (
@@ -273,6 +274,7 @@ export const validateEyeData2 = (
   options?: GazeMatchOptions
 ) => {
   const additionalGazePointsPerLetter = 10;
+  const mode = options?.mode === "point" ? "point" : "circle";
   const gazeRadiusPx = Math.max(
     0,
     Math.min(100, Math.round(options?.gazeRadiusPx ?? 20))
@@ -296,8 +298,12 @@ export const validateEyeData2 = (
   const relevantEyeData = eyeData.slice(
     -Math.min(gazePointsToConsider, eyeData.length)
   );
+  const emptyWord = {
+    word: "",
+    wordCoords: { left: 0, top: 0, width: 0, height: 0 },
+  };
   if (!relevantEyeData.length) {
-    return { word: "", wordCoords: { left: 0, top: 0, width: 0, height: 0 } };
+    return emptyWord;
   }
 
   const mapToViewport = createGazePointMapper();
@@ -315,7 +321,26 @@ export const validateEyeData2 = (
   }
 
   if (!gazePoints.length) {
-    return { word: "", wordCoords: { left: 0, top: 0, width: 0, height: 0 } };
+    return emptyWord;
+  }
+
+  // Legacy point mode: strict all-samples-inside-word matching.
+  if (mode === "point") {
+    for (const wordData of wordPositions) {
+      const { left, top, width, height } = wordData.wordCoords;
+      const allInside = gazePoints.every((point) =>
+        isPointInsideBox(point.x, point.y, {
+          left,
+          top,
+          right: left + width,
+          bottom: top + height,
+        })
+      );
+      if (allInside) {
+        return wordData;
+      }
+    }
+    return emptyWord;
   }
 
   avgGazeX /= gazePoints.length;
@@ -379,7 +404,7 @@ export const validateEyeData2 = (
     return bestMatch.wordData;
   }
 
-  return { word: "", wordCoords: { left: 0, top: 0, width: 0, height: 0 } };
+  return emptyWord;
 };
 
 export const validateHoldTranslation = (

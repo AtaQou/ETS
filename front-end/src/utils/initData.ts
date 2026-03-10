@@ -19,6 +19,7 @@ export const initSettings: IUserSettings = {
     showBoxes: false, // νέο default
     hoverTranslateDebug: false,
     showGazeCursor: false,
+    gazeDetectionMode: "circle",
     gazeYOffsetPx: 8,
     gazeHitRadiusPx: 20,
 };

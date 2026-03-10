@@ -22,6 +22,7 @@ const Settings: FC = () => {
         showBoxes = false,
         hoverTranslateDebug = false,
         showGazeCursor = false,
+        gazeDetectionMode = "circle",
         gazeYOffsetPx = 8,
         gazeHitRadiusPx = 20,
     } = userSettingsUi;
@@ -318,6 +319,40 @@ const Settings: FC = () => {
                     />
                 </div>
 
+                {/* Gaze detection mode */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Gaze detection mode
+                    </label>
+                    <select
+                        value={gazeDetectionMode}
+                        style={
+                            isDarkTheme
+                                ? {
+                                    backgroundColor: dark_secondary,
+                                    color: light_secondary,
+                                }
+                                : {
+                                    backgroundColor: light_primary,
+                                    color: dark_primary,
+                                }
+                        }
+                        className='text-base p-1 w-48 rounded border border-gray-300'
+                        onChange={(e) =>
+                            handleSettingsChange(
+                                "gazeDetectionMode",
+                                e.target.value as IUserSettings["gazeDetectionMode"]
+                            )
+                        }
+                    >
+                        <option value='point'>Point (legacy)</option>
+                        <option value='circle'>Circle (soft match)</option>
+                    </select>
+                </div>
+
                 {/* Gaze Y offset */}
                 <div className='mb-4 flex justify-between'>
                     <label
@@ -357,44 +392,46 @@ const Settings: FC = () => {
                     </div>
                 </div>
 
-                {/* Gaze hit radius */}
-                <div className='mb-4 flex justify-between'>
-                    <label
-                        className='text-base'
-                        style={{ color: getFontColorSecondary(isDarkTheme) }}
-                    >
-                        Gaze hit radius
-                    </label>
-                    <div
-                        className='flex items-center'
-                        style={{ color: getFontColorSecondary(isDarkTheme) }}
-                    >
-                        <input
-                            type='range'
-                            min='0'
-                            max='100'
-                            value={gazeHitRadiusPx}
-                            onChange={(e) =>
-                                handleSettingsChange("gazeHitRadiusPx", Number(e.target.value))
-                            }
-                            className='slider text-gray-900 p-1 h-10 rounded border border-gray-300'
-                        />
-                        <input
-                            type='number'
-                            min={0}
-                            max={100}
-                            value={gazeHitRadiusPx}
-                            onChange={(e) => {
-                                const raw = Number(e.target.value);
-                                if (Number.isNaN(raw)) return;
-                                const clamped = Math.max(0, Math.min(100, raw));
-                                handleSettingsChange("gazeHitRadiusPx", clamped);
-                            }}
-                            className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
-                        />
-                        <span className='ml-2 text-base'>px</span>
+                {/* Gaze hit radius (circle mode only) */}
+                {gazeDetectionMode === "circle" && (
+                    <div className='mb-4 flex justify-between'>
+                        <label
+                            className='text-base'
+                            style={{ color: getFontColorSecondary(isDarkTheme) }}
+                        >
+                            Gaze hit radius
+                        </label>
+                        <div
+                            className='flex items-center'
+                            style={{ color: getFontColorSecondary(isDarkTheme) }}
+                        >
+                            <input
+                                type='range'
+                                min='0'
+                                max='100'
+                                value={gazeHitRadiusPx}
+                                onChange={(e) =>
+                                    handleSettingsChange("gazeHitRadiusPx", Number(e.target.value))
+                                }
+                                className='slider text-gray-900 p-1 h-10 rounded border border-gray-300'
+                            />
+                            <input
+                                type='number'
+                                min={0}
+                                max={100}
+                                value={gazeHitRadiusPx}
+                                onChange={(e) => {
+                                    const raw = Number(e.target.value);
+                                    if (Number.isNaN(raw)) return;
+                                    const clamped = Math.max(0, Math.min(100, raw));
+                                    handleSettingsChange("gazeHitRadiusPx", clamped);
+                                }}
+                                className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
+                            />
+                            <span className='ml-2 text-base'>px</span>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 <div className='flex justify-end py-2'></div>
             </div>

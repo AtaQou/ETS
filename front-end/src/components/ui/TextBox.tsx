@@ -109,6 +109,7 @@ const TextBox = () => {
         baseGazeSamples,
         {
           gazeRadiusPx: userSettingsUi.gazeHitRadiusPx ?? 20,
+          mode: userSettingsUi.gazeDetectionMode ?? "circle",
         }
       );
 
@@ -141,6 +142,7 @@ const TextBox = () => {
     userSettingsUi.hoverTranslateDebug,
     userSettingsUi.baseGazeSamples,
     userSettingsUi.gazeHitRadiusPx,
+    userSettingsUi.gazeDetectionMode,
   ]);
 
   useEffect(() => {
