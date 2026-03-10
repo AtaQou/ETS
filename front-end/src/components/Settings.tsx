@@ -22,6 +22,7 @@ const Settings: FC = () => {
         showBoxes = false,
         hoverTranslateDebug = false,
         showGazeCursor = false,
+        gazeYOffsetPx = 8,
     } = userSettingsUi;
     const [loading, setLoading] = useState(false);
     const isDarkTheme = userSettingsApi.theme === "dark";
@@ -36,6 +37,9 @@ const Settings: FC = () => {
         }
         if (key === "baseGazeSamples") {
             newValue = Math.max(1, Math.round(value as number));
+        }
+        if (key === "gazeYOffsetPx") {
+            newValue = Math.max(0, Math.min(100, Math.round(value as number)));
         }
         if (setUserSettingsUi) {
             setUserSettingsUi({ [key]: newValue });
@@ -308,6 +312,45 @@ const Settings: FC = () => {
                             handleSettingsChange("showGazeCursor", e.target.checked as any)
                         }
                     />
+                </div>
+
+                {/* Gaze Y offset */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Gaze Y offset
+                    </label>
+                    <div
+                        className='flex items-center'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        <input
+                            type='range'
+                            min='0'
+                            max='100'
+                            value={gazeYOffsetPx}
+                            onChange={(e) =>
+                                handleSettingsChange("gazeYOffsetPx", Number(e.target.value))
+                            }
+                            className='slider text-gray-900 p-1 h-10 rounded border border-gray-300'
+                        />
+                        <input
+                            type='number'
+                            min={0}
+                            max={100}
+                            value={gazeYOffsetPx}
+                            onChange={(e) => {
+                                const raw = Number(e.target.value);
+                                if (Number.isNaN(raw)) return;
+                                const clamped = Math.max(0, Math.min(100, raw));
+                                handleSettingsChange("gazeYOffsetPx", clamped);
+                            }}
+                            className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
+                        />
+                        <span className='ml-2 text-base'>px</span>
+                    </div>
                 </div>
 
                 <div className='flex justify-end py-2'></div>

@@ -68,6 +68,29 @@ const getViewportResolution = () => {
   return [Math.max(1, Math.round(width)), Math.max(1, Math.round(height))];
 };
 
+const clampGazeYOffsetPx = (value: number) =>
+  Math.max(0, Math.min(100, Math.round(value)));
+
+const readInitialGazeYOffsetPx = () => {
+  if (typeof window === "undefined") return 8;
+  try {
+    const rawSettings = window.localStorage.getItem("userSettingsUi");
+    if (!rawSettings) return 8;
+    const parsed = JSON.parse(rawSettings);
+    return clampGazeYOffsetPx(Number(parsed?.gazeYOffsetPx ?? 8));
+  } catch (error) {
+    return 8;
+  }
+};
+
+let gazeYOffsetPx = readInitialGazeYOffsetPx();
+
+export const setGazeYOffsetPx = (value: number) => {
+  gazeYOffsetPx = clampGazeYOffsetPx(value);
+};
+
+export const getGazeYOffsetPx = () => gazeYOffsetPx;
+
 const getScreenResolution = () => {
   const width = window.screen.width || window.innerWidth || 1;
   const height = window.screen.height || window.innerHeight || 1;
@@ -157,7 +180,7 @@ export const getGazePointCoordinates = (data: GazeData) => {
 
   return clampToViewport(
     absoluteScreenX - viewportLeftOnScreen,
-    absoluteScreenY - viewportTopOnScreen
+    absoluteScreenY - viewportTopOnScreen + gazeYOffsetPx
   );
 };
 // This is for batches of gaze data and makes the circle smoother.

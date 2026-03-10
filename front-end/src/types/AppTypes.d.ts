@@ -97,6 +97,7 @@ export interface IUserSettings {
     showBoxes?: boolean; // νέο, optional για να μην σπάσει παλιό state
     hoverTranslateDebug?: boolean;
     showGazeCursor?: boolean;
+    gazeYOffsetPx?: number;
 }
 
 

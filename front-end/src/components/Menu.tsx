@@ -40,6 +40,7 @@ function Menu({ onCloseMenu }: MenuProps) {
     showBoxes,
     hoverTranslateDebug,
     showGazeCursor,
+    gazeYOffsetPx,
   } = userSettingsUi;
   const { userID } = userInfo;
   const [selectedOption, setSelectedOption] = useState("settings");
@@ -87,6 +88,7 @@ function Menu({ onCloseMenu }: MenuProps) {
               showBoxes,
               hoverTranslateDebug,
               showGazeCursor,
+              gazeYOffsetPx,
             });
             triggerSnackbar({
               message: "Settings saved successfully!",

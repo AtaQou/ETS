@@ -10,6 +10,7 @@ import TextBox from "components/ui/TextBox";
 import useMockData from "hooks/useMockData";
 import CircleMover from "components/CircleMover";
 import WordBoxesOverlay from "./components/WordBoxesOverlay"; // ✅ ΝΕΟ IMPORT
+import { setGazeYOffsetPx } from "./utils/eyeTracking";
 
 
 const App: React.FC = () => {
@@ -38,6 +39,10 @@ const App: React.FC = () => {
             toggleFullScreen();
         }
     }, [isCalibrating]);
+
+    useEffect(() => {
+        setGazeYOffsetPx(userSettingsUi.gazeYOffsetPx ?? 8);
+    }, [userSettingsUi.gazeYOffsetPx]);
 
     const step = 0.1;
     const points = [];
