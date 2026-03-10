@@ -2,7 +2,7 @@ import TranslationPopup from "components/TranslationPopup";
 import { Context } from "context/Context";
 // import { useEyeTrackingData } from "context/EyeTrackingContext";
 import { useWordPositions } from "hooks/useWordPositions";
-import React, { useContext, useEffect, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   IContextProps,
   ID,
@@ -21,6 +21,7 @@ const apiKey = "AIzaSyCgaeL8Nfo0U4ZgQZ9xDRGCOH27-dkj3Sg";
 
 type FocusSentenceResponse = {
   sentence: string;
+  sentenceWithMarker?: string;
   matchedToken: string;
 };
 
@@ -28,10 +29,11 @@ const escapeRegExp = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const createUniqueMarkers = () => {
-  const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const markerId = `${Date.now()}${Math.random().toString(36).slice(2, 8)}`.toUpperCase();
   return {
-    startMarker: `__ETS_START_${suffix}__`,
-    endMarker: `__ETS_END_${suffix}__`,
+    markerId,
+    startMarker: `⟦${markerId}A⟧`,
+    endMarker: `⟦${markerId}B⟧`,
   };
 };
 
@@ -49,14 +51,14 @@ const injectMarkersInSentence = (
     const pattern = useWordBoundary ? `\\b${escaped}\\b` : escaped;
     const regex = new RegExp(pattern, "i");
     if (!regex.test(sentence)) return "";
-    return sentence.replace(regex, `${startMarker}$&${endMarker}`);
+    return sentence.replace(regex, `${startMarker} $& ${endMarker}`);
   };
 
   return (
-    tryWrap(primaryTarget) ||
     tryWrap(primaryTarget, true) ||
-    tryWrap(fallbackTarget) ||
+    tryWrap(primaryTarget) ||
     tryWrap(fallbackTarget, true) ||
+    tryWrap(fallbackTarget) ||
     sentence
   );
 };
@@ -88,6 +90,27 @@ const removeMarkers = (
     .replace(new RegExp(escapeRegExp(endMarker), "g"), "")
     .replace(/\s+/g, " ")
     .trim();
+
+const removeMarkerArtifacts = (translatedText: string, markerId: string) => {
+  const markerRegex = new RegExp(
+    `⟦\\s*${escapeRegExp(markerId)}\\s*[AB]\\s*⟧`,
+    "gi"
+  );
+
+  return translatedText.replace(markerRegex, "").replace(/\s+/g, " ").trim();
+};
+
+const sanitizeWordOnlyTranslation = (value: string) => {
+  const normalized = (value || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+
+  // Avoid trailing sentence punctuation in word-only mode output.
+  const withoutTrailingPunctuation = normalized
+    .replace(/[.,!?;:]+$/g, "")
+    .trim();
+
+  return withoutTrailingPunctuation || "";
+};
 
 const TextBox = () => {
   // const { eyeData } = useEyeTrackingData();
@@ -122,6 +145,7 @@ const TextBox = () => {
     useState<IScaledWordCoords[]>();
   const [translation, setTranslation] = useState<string>("");
   const [coolDown, setCoolDown] = useState<boolean>(false);
+  const translationRequestIdRef = useRef(0);
 
   useEffect(() => {
     if (wordPositions && wordPositions.length) {
@@ -236,10 +260,12 @@ const TextBox = () => {
       docID: ID,
       userID: string,
       page: number,
-      focusBox?: number[]
+      focusBox?: number[],
+      startMarker?: string,
+      endMarker?: string
     ): Promise<FocusSentenceResponse> => {
       if (!focusBox || !docID || !userID) {
-        return { sentence: "", matchedToken: "" };
+        return { sentence: "", sentenceWithMarker: "", matchedToken: "" };
       }
       try {
         const response = await fetch(`${apiURL}/sentence-from-focus`, {
@@ -253,17 +279,20 @@ const TextBox = () => {
             userID,
             page,
             focusBox,
+            startMarker,
+            endMarker,
           }),
         });
-        if (!response.ok) return { sentence: "", matchedToken: "" };
+        if (!response.ok) return { sentence: "", sentenceWithMarker: "", matchedToken: "" };
         const data = await response.json();
         return {
           sentence: data?.sentence || "",
+          sentenceWithMarker: data?.sentenceWithMarker || "",
           matchedToken: data?.matchedToken || "",
         };
       } catch (error) {
         console.error("Error fetching sentence:", error);
-        return { sentence: "", matchedToken: "" };
+        return { sentence: "", sentenceWithMarker: "", matchedToken: "" };
       }
     };
 
@@ -303,53 +332,82 @@ const TextBox = () => {
     const fetchTranslation = async () => {
       setTranslation("");
       if (currentWord && shouldTranslate) {
+        translationRequestIdRef.current += 1;
+        const requestId = translationRequestIdRef.current;
+        const setTranslationIfLatest = (value: string) => {
+          if (requestId === translationRequestIdRef.current) {
+            setTranslation(value);
+          }
+        };
+
         const isSentenceMode = userSettingsUi.translationMode === "sentence";
         const sourceWord = currentWord.word;
-        const { sentence: sourceSentence, matchedToken } =
+        const { markerId, startMarker, endMarker } = createUniqueMarkers();
+        const {
+          sentence: sourceSentence,
+          sentenceWithMarker,
+          matchedToken,
+        } =
           await getSentenceFromFocus(
             selectedDocID,
             userInfo.userID,
             currentPage,
-            currentWord.sourceBox
+            currentWord.sourceBox,
+            isSentenceMode ? undefined : startMarker,
+            isSentenceMode ? undefined : endMarker
           );
 
         // Keep UX useful even when sentence detection fails.
         if (!sourceSentence) {
           const fallbackWordTranslation = await translateText(sourceWord);
-          setTranslation(fallbackWordTranslation || sourceWord || "");
+          setTranslationIfLatest(
+            sanitizeWordOnlyTranslation(fallbackWordTranslation) || sourceWord || ""
+          );
           return;
         }
 
         if (isSentenceMode) {
           const translatedSentence = await translateText(sourceSentence);
-          setTranslation(translatedSentence || sourceSentence || "");
+          setTranslationIfLatest(translatedSentence || sourceSentence || "");
           return;
         }
 
-        const { startMarker, endMarker } = createUniqueMarkers();
-        const sentenceWithMarkers = injectMarkersInSentence(
-          sourceSentence,
-          startMarker,
-          endMarker,
-          matchedToken,
-          sourceWord
-        );
+        const sentenceWithMarkers =
+          sentenceWithMarker ||
+          injectMarkersInSentence(
+            sourceSentence,
+            startMarker,
+            endMarker,
+            matchedToken,
+            sourceWord
+          );
+        const markersWereInjected =
+          sentenceWithMarkers.includes(startMarker) &&
+          sentenceWithMarkers.includes(endMarker);
 
         const translatedSentence = await translateText(sentenceWithMarkers);
         if (!translatedSentence) {
           const fallbackWordTranslation = await translateText(sourceWord);
-          setTranslation(fallbackWordTranslation || sourceWord || "");
+          setTranslationIfLatest(
+            sanitizeWordOnlyTranslation(fallbackWordTranslation) || sourceWord || ""
+          );
           return;
         }
 
-        const extractedWordTranslation = extractBetweenMarkers(
-          translatedSentence,
-          startMarker,
-          endMarker
-        );
-        if (extractedWordTranslation) {
-          setTranslation(extractedWordTranslation);
-          return;
+        if (markersWereInjected) {
+          const extractedWordTranslation = extractBetweenMarkers(
+            translatedSentence,
+            startMarker,
+            endMarker
+          );
+          if (extractedWordTranslation) {
+            setTranslationIfLatest(
+              sanitizeWordOnlyTranslation(extractedWordTranslation) ||
+                sourceWord ||
+                ""
+            );
+            return;
+          }
         }
 
         const cleanedSentenceFallback = removeMarkers(
@@ -357,13 +415,26 @@ const TextBox = () => {
           startMarker,
           endMarker
         );
-        if (cleanedSentenceFallback) {
-          setTranslation(cleanedSentenceFallback);
+        const cleanedSentenceWithoutArtifacts = removeMarkerArtifacts(
+          cleanedSentenceFallback,
+          markerId
+        );
+        const fallbackWordTranslation = await translateText(sourceWord);
+
+        // If markers were injected but extraction failed, prefer a clean word fallback.
+        if (markersWereInjected && fallbackWordTranslation) {
+          setTranslationIfLatest(
+            sanitizeWordOnlyTranslation(fallbackWordTranslation) || sourceWord || ""
+          );
           return;
         }
 
-        const fallbackWordTranslation = await translateText(sourceWord);
-        setTranslation(fallbackWordTranslation || sourceWord || "");
+        setTranslationIfLatest(
+          sanitizeWordOnlyTranslation(fallbackWordTranslation) ||
+            cleanedSentenceWithoutArtifacts ||
+            sourceWord ||
+            ""
+        );
       }
     };
     fetchTranslation();

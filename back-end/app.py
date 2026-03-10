@@ -330,6 +330,31 @@ def _build_sentence_text(tokens):
     return " ".join(sentence_parts).strip()
 
 
+def _build_sentence_text_with_marker(tokens, marker_idx, start_marker, end_marker):
+    sentence_parts = []
+    punctuation_tokens = {".", ",", "?", "!", ";", ":"}
+
+    for idx, token in enumerate(tokens):
+        current = token.get("raw", "").strip()
+        if not current:
+            continue
+
+        if (
+            marker_idx is not None
+            and idx == marker_idx
+            and start_marker
+            and end_marker
+        ):
+            current = f"{start_marker} {current} {end_marker}"
+
+        if sentence_parts and current in punctuation_tokens:
+            sentence_parts[-1] = sentence_parts[-1].rstrip() + current
+        else:
+            sentence_parts.append(current)
+
+    return " ".join(sentence_parts).strip()
+
+
 @app.route('/api/words-positions', methods=['GET'])
 def get_position_of_words():
     try:
@@ -376,6 +401,8 @@ def sentence_from_focus():
         user_id = data.get('userID')
         page = data.get('page')
         focus_box = data.get('focusBox')
+        start_marker = (data.get('startMarker') or "").strip()
+        end_marker = (data.get('endMarker') or "").strip()
 
         if doc_id is None or user_id is None or page is None or not focus_box:
             return jsonify({"success": False, "message": "Missing required fields"}), 400
@@ -439,9 +466,24 @@ def sentence_from_focus():
         if not sentence_text:
             sentence_text = matched_token.get("raw", "")
 
+        marker_local_idx = local_match_idx - start
+        sentence_with_marker = ""
+        if (
+            start_marker
+            and end_marker
+            and 0 <= marker_local_idx < len(sentence_tokens)
+        ):
+            sentence_with_marker = _build_sentence_text_with_marker(
+                sentence_tokens,
+                marker_local_idx,
+                start_marker,
+                end_marker,
+            )
+
         return jsonify({
             "success": True,
             "sentence": sentence_text,
+            "sentenceWithMarker": sentence_with_marker,
             "matchedToken": matched_token.get("raw", ""),
         }), 200
     except Exception:
