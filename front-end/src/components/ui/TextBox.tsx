@@ -334,7 +334,7 @@ const TextBox = () => {
         }}
       >
         <div className='relative'>
-          {shouldTranslate && (
+          {shouldTranslate && translation.trim().length > 0 && (
             <TranslationPopup
               translation={translation}
               offset={(currentWord?.wordCoords.width || 0) + wordPadding}
