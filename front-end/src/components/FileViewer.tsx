@@ -33,6 +33,7 @@ const FileViewer: React.FC = () => {
     setCurrentPage,
     pageCount,
     setScrollTop,
+    setScrollLeft,
     userSettingsApi,
     setPageCount,
     pdfDimensions,
@@ -90,16 +91,16 @@ const FileViewer: React.FC = () => {
       event.stopPropagation();
       event.preventDefault();
 
-      const container = event.target as HTMLDivElement;
+      const container = event.currentTarget;
       const pageHeight = pdfDimensions.height;
 
       const scrolledPages =
         Math.floor((container.scrollTop + pageHeight / 4) / pageHeight) + 1;
-      const containerElement = document.getElementById("pdf-container");
-      if (containerElement) setScrollTop?.(containerElement?.scrollTop);
+      setScrollTop?.(container.scrollTop);
+      setScrollLeft?.(container.scrollLeft);
       setCurrentPage?.(scrolledPages);
     },
-    [pdfDimensions.height, setCurrentPage, setScrollTop]
+    [pdfDimensions.height, setCurrentPage, setScrollLeft, setScrollTop]
   );
 
   // const debouncedScroll = debounce(handleScroll, 250);

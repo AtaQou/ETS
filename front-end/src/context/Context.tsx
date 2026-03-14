@@ -42,6 +42,7 @@ const initialState: IContextProps = {
   currentPage: 0,
   pageCount: 0,
   scrollTop: 0,
+  scrollLeft: 0,
   loading: false,
   pdfDimensions: initPdfDimensions,
   userInfo,
@@ -170,6 +171,14 @@ const reducer = (state: IContextProps, action: IAction): IContextProps => {
         };
       }
       return state;
+    case "SCROLL_LEFT":
+      if (container) {
+        return {
+          ...state,
+          scrollLeft: action.payload,
+        };
+      }
+      return state;
     case "SET_SHOULD_SUBSCRIBE":
       return {
         ...state,
@@ -275,6 +284,9 @@ export const ContextProvider = ({
   const setScrollTop = (scrollTop: number) => {
     dispatch({ type: "SCROLL", payload: scrollTop });
   };
+  const setScrollLeft = (scrollLeft: number) => {
+    dispatch({ type: "SCROLL_LEFT", payload: scrollLeft });
+  };
 
   const setPageMounted = () => {
     dispatch({ type: "SET_ELEMENT_MOUNTED" });
@@ -329,7 +341,9 @@ export const ContextProvider = ({
     setPageCount,
     loadFile,
     scrollTop: state.scrollTop,
+    scrollLeft: state.scrollLeft,
     setScrollTop,
+    setScrollLeft,
     isLoggedIn: state.userInfo.isLoggedIn,
     userInfo: state.userInfo,
     setUserInfo,

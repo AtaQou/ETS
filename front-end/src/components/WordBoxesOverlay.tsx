@@ -7,7 +7,7 @@ import { calculateScaledPositions } from "utils/functions";
 const DEBUG_SHOW_BOXES = false;
 
 const WordBoxesOverlay: React.FC = () => {
-    const { currentPage, userSettingsUi, file, scrollTop } = useContext(Context);
+    const { currentPage, userSettingsUi, file, scrollTop, scrollLeft } = useContext(Context);
     const { wordPositions } = useWordPositions();
 
     const showBoxes = userSettingsUi.showBoxes ?? DEBUG_SHOW_BOXES;
@@ -49,7 +49,7 @@ const WordBoxesOverlay: React.FC = () => {
         });
 
         setBoxes(mappedBoxes);
-    }, [currentPageData, currentPage, scrollTop]);
+    }, [currentPageData, currentPage, scrollLeft, scrollTop]);
 
     if (!showBoxes || !file || file.size === 0 || boxes.length === 0) {
         return null;

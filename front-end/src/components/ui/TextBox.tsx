@@ -26,6 +26,7 @@ const TextBox = () => {
   const {
     pageMounted,
     scrollTop,
+    scrollLeft,
     currentPage,
     selectedDocID,
     shouldTranslate,
@@ -34,6 +35,7 @@ const TextBox = () => {
     userInfo,
   } = useContext<IContextProps>(Context);
   const prevScrollTop = usePrevious(scrollTop);
+  const prevScrollLeft = usePrevious(scrollLeft);
 
   const { wordPositions } = useWordPositions();
 
@@ -87,7 +89,7 @@ const TextBox = () => {
     }
 
     setWordsScreenPositions([]);
-  }, [currentPage, currentPageData, pageMounted, scrollTop]);
+  }, [currentPage, currentPageData, pageMounted, scrollLeft, scrollTop]);
 
   useEffect(() => {
     if (coolDown || userSettingsUi.hoverTranslateDebug) return;
@@ -266,11 +268,20 @@ const TextBox = () => {
   ]);
 
   useEffect(() => {
-    if (scrollTop && prevScrollTop !== scrollTop) {
+    if (
+      (prevScrollTop !== undefined && prevScrollTop !== scrollTop) ||
+      (prevScrollLeft !== undefined && prevScrollLeft !== scrollLeft)
+    ) {
       setShouldTranslate?.(false);
       setCoolDown(false);
     }
-  }, [prevScrollTop, scrollTop, setShouldTranslate]);
+  }, [
+    prevScrollLeft,
+    prevScrollTop,
+    scrollLeft,
+    scrollTop,
+    setShouldTranslate,
+  ]);
 
   // THIS IS FOR MOCKING THE TRANSLATION POPUP
   // useEffect(() => {

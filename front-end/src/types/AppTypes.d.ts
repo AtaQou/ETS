@@ -4,6 +4,7 @@ export interface IContextProps {
   currentPage: number;
   pageCount: number;
   scrollTop: number;
+  scrollLeft: number;
   loading: boolean;
   pdfDimensions: IPdfDimensions;
   userInfo: IUserInfo;
@@ -30,6 +31,7 @@ export interface IContextProps {
   goToNextPage?: () => void;
   goToPrevPage?: () => void;
   setScrollTop?: (scrollTop: number) => void;
+  setScrollLeft?: (scrollLeft: number) => void;
   setIsMenuOpen?: (isOpen: boolean) => void;
   setSelectedEyeTracker?: (eyeTracker: IEyeTracker) => void;
   setIsEyeTrackerConnected?: (isConnected: boolean) => void;
