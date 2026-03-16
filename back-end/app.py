@@ -809,6 +809,42 @@ def get_experiment_sessions():
     return jsonify(sessions), 200
 
 
+@app.route('/api/experiment/users', methods=['GET'])
+def get_experiment_users():
+    conn = sqlite3.connect(sqLiteDatabase)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT
+                u.userID,
+                u.username,
+                COALESCE(s.sessionCount, 0) AS sessionCount,
+                COALESCE(t.translationCount, 0) AS translationCount
+            FROM users u
+            LEFT JOIN (
+                SELECT userID, COUNT(*) AS sessionCount
+                FROM user_sessions
+                GROUP BY userID
+            ) s ON s.userID = u.userID
+            LEFT JOIN (
+                SELECT userID, COUNT(*) AS translationCount
+                FROM translation_events
+                GROUP BY userID
+            ) t ON t.userID = u.userID
+            ORDER BY u.userID ASC
+        """)
+        users = [dict(row) for row in cursor.fetchall()]
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to fetch users.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify(users), 200
+
+
 @app.route('/api/experiment/translations', methods=['GET'])
 def get_experiment_translations():
     user_id = request.args.get('userID')

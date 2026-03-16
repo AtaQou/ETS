@@ -6,6 +6,7 @@ import axios from "axios";
 import FileUpload from "./FileUpload";
 import Settings from "./Settings";
 import Vocabulary from "./Vocabulary";
+import Results from "./Results";
 import { useSnackbar } from "../hooks/useSnackbar";
 import { FiArrowLeft } from "react-icons/fi";
 import { isEqual } from "lodash";
@@ -56,6 +57,8 @@ function Menu({ onCloseMenu }: MenuProps) {
   );
 
   const shouldDisableConfirm =
+    selectedOption === "vocabulary" ||
+    selectedOption === "results" ||
     ((selectedOption === "documents" || selectedOption === "upload") &&
     docID === "") ||
     (selectedOption === "settings" && !settingsHaveChanges);
@@ -147,6 +150,8 @@ function Menu({ onCloseMenu }: MenuProps) {
         return <Documents docID={docID} setDocID={setDocID} onConfirm={onConfirm} />;
       case "upload":
         return <FileUpload />;
+      case "results":
+        return <Results />;
       default:
         return <div>Please select an option.</div>;
     }
@@ -224,6 +229,20 @@ function Menu({ onCloseMenu }: MenuProps) {
               onClick={() => setSelectedOption("vocabulary")}
             >
               Vocabulary
+            </div>
+            <div
+              className={`cursor-pointer p-1 xl:w-48 lg:w-[12rem] text-base hover:text-blue-500 px-4 py-2`}
+              style={
+                selectedOption === "results"
+                  ? {
+                      backgroundColor: getBgSecondary(isDarkTheme),
+                      color: "rgb(59 130 246)",
+                    }
+                  : {}
+              }
+              onClick={() => setSelectedOption("results")}
+            >
+              Results
             </div>
           </div>
           <div className={`w-full rounded max-h-[64vh] lg`}>
