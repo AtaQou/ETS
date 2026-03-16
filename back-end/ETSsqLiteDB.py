@@ -30,6 +30,36 @@ def initializeDatabase():
             FOREIGN KEY(userID) REFERENCES users(userID))
             ''')
 
+    c.execute('''
+            CREATE TABLE IF NOT EXISTS user_sessions
+            ([sessionID] TEXT PRIMARY KEY, [userID] INTEGER, [trackerAddress] TEXT, [trackerName] TEXT,
+            [startedAt] DATETIME, [endedAt] DATETIME, [startSettings] TEXT, [endReason] TEXT,
+            FOREIGN KEY(userID) REFERENCES users(userID))
+            ''')
+
+    c.execute('''
+            CREATE TABLE IF NOT EXISTS translation_events
+            ([eventID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER, [sessionID] TEXT,
+            [docID] INTEGER, [page] INTEGER, [sourceText] TEXT, [translatedText] TEXT, [sourceLang] TEXT,
+            [targetLang] TEXT, [translationMode] TEXT, [provider] TEXT, [translatedAt] DATETIME, [settingsSnapshot] TEXT,
+            FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
+            ''')
+
+    c.execute('''
+            CREATE TABLE IF NOT EXISTS translation_stats
+            ([userID] INTEGER, [sessionID] TEXT, [sourceText] TEXT, [targetLang] TEXT, [translationMode] TEXT,
+            [usageCount] INTEGER DEFAULT 1, [lastTranslation] TEXT, [lastTranslatedAt] DATETIME,
+            PRIMARY KEY (userID, sessionID, sourceText, targetLang, translationMode),
+            FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
+            ''')
+
+    c.execute('''
+            CREATE TABLE IF NOT EXISTS settings_change_events
+            ([changeID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER, [sessionID] TEXT,
+            [changedFields] TEXT, [oldSettings] TEXT, [newSettings] TEXT, [changedAt] DATETIME,
+            FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
+            ''')
+
     conn.commit()
 
     print('DB fine')

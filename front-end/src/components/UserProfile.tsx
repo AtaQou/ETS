@@ -68,6 +68,7 @@ const UserProfile: React.FC = () => {
             isLoggedIn: true,
             userID: res.data.userID,
             username: res.data.username,
+            sessionID: res.data.sessionID || "",
           });
         }
       })

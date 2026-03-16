@@ -35,6 +35,8 @@ const HeaderMenu: FC = () => {
   const {
     file,
     logout,
+    userInfo,
+    setUserInfo,
     isMenuOpen,
     setIsMenuOpen,
     isCalibrating,
@@ -110,7 +112,28 @@ const HeaderMenu: FC = () => {
     toggleEyeTrackerSearch();
   }, [toggleEyeTrackerSearch]);
 
-  const onClickLogout = () => {
+  const closeActiveSession = async (reason: string) => {
+    if (!userInfo.userID || !userInfo.sessionID) {
+      return;
+    }
+    try {
+      await axios.post(`${apiURL}/session/end`, {
+        userID: userInfo.userID,
+        sessionID: userInfo.sessionID,
+        reason,
+      });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setUserInfo?.({
+        ...userInfo,
+        sessionID: "",
+      });
+    }
+  };
+
+  const onClickLogout = async () => {
+    await closeActiveSession("logout");
     logout();
   };
 
@@ -123,7 +146,8 @@ const HeaderMenu: FC = () => {
     }
   };
 
-  const onCloseSocketConnection = () => {
+  const onCloseSocketConnection = async () => {
+    await closeActiveSession("manual_disconnect");
     setIsEyeTrackerConnected?.(false);
     setShouldSubscribe?.(false);
     setIsCalibrating?.(false);

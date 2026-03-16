@@ -1,4 +1,5 @@
 import io
+import csv
 import uuid
 import json
 import torch
@@ -36,6 +37,12 @@ MODELS = {}
 def ensure_settings_schema():
     conn = sqlite3.connect(sqLiteDatabase)
     cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_settings
+        ([userID] INTEGER, [Selected_language] TEXT, [theme] TEXT, [zoomLevel] INTEGER,
+         [baseGazeSamples] INTEGER DEFAULT 60, [translationMode] TEXT DEFAULT 'word',
+         FOREIGN KEY(userID) REFERENCES users(userID))
+    ''')
     cursor.execute("PRAGMA table_info(user_settings)")
     existing_columns = {row[1] for row in cursor.fetchall()}
     if 'baseGazeSamples' not in existing_columns:
@@ -51,7 +58,105 @@ def ensure_settings_schema():
     conn.close()
 
 
+def ensure_experiment_schema():
+    conn = sqlite3.connect(sqLiteDatabase)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_sessions
+        ([sessionID] TEXT PRIMARY KEY, [userID] INTEGER NOT NULL, [trackerAddress] TEXT, [trackerName] TEXT,
+         [startedAt] DATETIME NOT NULL, [endedAt] DATETIME, [startSettings] TEXT, [endReason] TEXT,
+         FOREIGN KEY(userID) REFERENCES users(userID))
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS translation_events
+        ([eventID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER NOT NULL, [sessionID] TEXT NOT NULL,
+         [docID] INTEGER, [page] INTEGER, [sourceText] TEXT NOT NULL, [translatedText] TEXT NOT NULL,
+         [sourceLang] TEXT DEFAULT 'en', [targetLang] TEXT NOT NULL, [translationMode] TEXT DEFAULT 'word',
+         [provider] TEXT DEFAULT 'google', [translatedAt] DATETIME NOT NULL, [settingsSnapshot] TEXT,
+         FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS translation_stats
+        ([userID] INTEGER NOT NULL, [sessionID] TEXT NOT NULL, [sourceText] TEXT NOT NULL,
+         [targetLang] TEXT NOT NULL, [translationMode] TEXT NOT NULL, [usageCount] INTEGER NOT NULL DEFAULT 1,
+         [lastTranslation] TEXT, [lastTranslatedAt] DATETIME NOT NULL,
+         PRIMARY KEY (userID, sessionID, sourceText, targetLang, translationMode),
+         FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS settings_change_events
+        ([changeID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER NOT NULL, [sessionID] TEXT,
+         [changedFields] TEXT NOT NULL, [oldSettings] TEXT, [newSettings] TEXT NOT NULL, [changedAt] DATETIME NOT NULL,
+         FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
+    ''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_translation_events_user_time ON translation_events(userID, translatedAt DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_translation_events_session_time ON translation_events(sessionID, translatedAt DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_settings_change_user_time ON settings_change_events(userID, changedAt DESC)"
+    )
+    conn.commit()
+    conn.close()
+
+
+def _now_iso():
+    return datetime.now().isoformat(timespec='seconds')
+
+
+def _to_json(payload):
+    if payload is None:
+        return None
+    try:
+        return json.dumps(payload, ensure_ascii=False)
+    except TypeError:
+        return json.dumps(str(payload), ensure_ascii=False)
+
+
+def _from_json(payload):
+    if payload is None:
+        return None
+    try:
+        return json.loads(payload)
+    except (TypeError, json.JSONDecodeError):
+        return payload
+
+
+def _settings_row_to_dict(row):
+    if row is None:
+        return None
+    return {
+        "language": row[1],
+        "theme": row[2],
+        "zoomLevel": row[3],
+        "baseGazeSamples": row[4] if row[4] is not None else 60,
+        "translationMode": row[5] if row[5] else "word",
+    }
+
+
+def _get_active_session_id(cursor, user_id):
+    cursor.execute(
+        "SELECT sessionID FROM user_sessions WHERE userID = ? AND endedAt IS NULL ORDER BY startedAt DESC LIMIT 1",
+        (user_id,)
+    )
+    row = cursor.fetchone()
+    if not row:
+        return None
+    return row[0]
+
+
+def _get_db_settings(cursor, user_id):
+    cursor.execute(
+        "SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode FROM user_settings WHERE userID = ?",
+        (user_id,)
+    )
+    return _settings_row_to_dict(cursor.fetchone())
+
+
 ensure_settings_schema()
+ensure_experiment_schema()
 
 
 def get_model(tgt_lang):
@@ -492,6 +597,354 @@ def get_eye_tracker():
 
     return jsonify({"message": message}), 200
 
+
+# ----------------------------- Session + Logs ------------------------------------
+
+
+@app.route('/api/session/start', methods=['POST'])
+def start_session():
+    data = request.get_json() or {}
+    user_id = data.get('userID')
+    if not user_id:
+        return jsonify({'message': 'userID is required.'}), 400
+
+    tracker_address = data.get('trackerAddress')
+    tracker_name = data.get('trackerName')
+    start_settings = data.get('settings')
+    started_at = _now_iso()
+    session_id = str(uuid.uuid4())
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "UPDATE user_sessions SET endedAt = ?, endReason = ? WHERE userID = ? AND endedAt IS NULL",
+            (started_at, 'replaced_by_new_session', user_id)
+        )
+
+        if start_settings is None:
+            start_settings = _get_db_settings(cursor, user_id)
+
+        cursor.execute(
+            """INSERT INTO user_sessions(sessionID, userID, trackerAddress, trackerName, startedAt, startSettings)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (session_id, user_id, tracker_address, tracker_name, started_at, _to_json(start_settings))
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to start session.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Session started.',
+        'sessionID': session_id,
+        'startedAt': started_at
+    }), 200
+
+
+@app.route('/api/session/end', methods=['POST'])
+def end_session():
+    data = request.get_json() or {}
+    user_id = data.get('userID')
+    session_id = data.get('sessionID')
+    reason = data.get('reason', 'manual_disconnect')
+    ended_at = _now_iso()
+
+    if not user_id:
+        return jsonify({'message': 'userID is required.'}), 400
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    cursor = conn.cursor()
+
+    try:
+        if not session_id:
+            session_id = _get_active_session_id(cursor, user_id)
+
+        if not session_id:
+            return jsonify({'message': 'No active session found.'}), 200
+
+        cursor.execute(
+            """UPDATE user_sessions
+               SET endedAt = COALESCE(endedAt, ?), endReason = COALESCE(endReason, ?)
+               WHERE sessionID = ? AND userID = ?""",
+            (ended_at, reason, session_id, user_id)
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to end session.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Session closed.',
+        'sessionID': session_id,
+        'endedAt': ended_at
+    }), 200
+
+
+@app.route('/api/log-translation', methods=['POST'])
+def log_translation_event():
+    data = request.get_json() or {}
+
+    user_id = data.get('userID')
+    session_id = data.get('sessionID')
+    source_text = (data.get('sourceText') or '').strip()
+    translated_text = (data.get('translatedText') or '').strip()
+    source_lang = data.get('sourceLang', 'en')
+    target_lang = data.get('targetLang', 'el')
+    translation_mode = data.get('translationMode', 'word')
+    provider = data.get('provider', 'google')
+    doc_id = data.get('docID')
+    page = data.get('page')
+    translated_at = data.get('translatedAt') or _now_iso()
+    settings_snapshot = data.get('settings')
+
+    if not user_id:
+        return jsonify({'message': 'userID is required.'}), 400
+    if not source_text or not translated_text:
+        return jsonify({'message': 'sourceText and translatedText are required.'}), 400
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    cursor = conn.cursor()
+
+    try:
+        if not session_id:
+            session_id = _get_active_session_id(cursor, user_id)
+
+        if not session_id:
+            return jsonify({'message': 'No active session for this user.'}), 400
+
+        cursor.execute(
+            "SELECT sessionID FROM user_sessions WHERE sessionID = ? AND userID = ? AND endedAt IS NULL",
+            (session_id, user_id)
+        )
+        active_session = cursor.fetchone()
+        if not active_session:
+            return jsonify({'message': 'Session is not active.'}), 400
+
+        if settings_snapshot is None:
+            settings_snapshot = _get_db_settings(cursor, user_id)
+
+        cursor.execute(
+            """INSERT INTO translation_events(
+                userID, sessionID, docID, page, sourceText, translatedText,
+                sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                user_id, session_id, doc_id, page, source_text, translated_text,
+                source_lang, target_lang, translation_mode, provider, translated_at, _to_json(settings_snapshot)
+            )
+        )
+
+        cursor.execute(
+            """INSERT INTO translation_stats(
+                userID, sessionID, sourceText, targetLang, translationMode, usageCount, lastTranslation, lastTranslatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(userID, sessionID, sourceText, targetLang, translationMode)
+            DO UPDATE SET
+                usageCount = usageCount + 1,
+                lastTranslation = excluded.lastTranslation,
+                lastTranslatedAt = excluded.lastTranslatedAt""",
+            (user_id, session_id, source_text, target_lang, translation_mode, 1, translated_text, translated_at)
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to log translation.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify({'message': 'Translation event logged.'}), 200
+
+
+@app.route('/api/experiment/sessions', methods=['GET'])
+def get_experiment_sessions():
+    user_id = request.args.get('userID')
+    conn = sqlite3.connect(sqLiteDatabase)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        query = """
+            SELECT
+                s.sessionID, s.userID, u.username, s.trackerAddress, s.trackerName,
+                s.startedAt, s.endedAt, s.endReason, s.startSettings,
+                COALESCE(te.translationCount, 0) AS translationCount,
+                COALESCE(sc.settingsChangeCount, 0) AS settingsChangeCount
+            FROM user_sessions s
+            LEFT JOIN users u ON u.userID = s.userID
+            LEFT JOIN (
+                SELECT sessionID, COUNT(*) AS translationCount
+                FROM translation_events
+                GROUP BY sessionID
+            ) te ON te.sessionID = s.sessionID
+            LEFT JOIN (
+                SELECT sessionID, COUNT(*) AS settingsChangeCount
+                FROM settings_change_events
+                GROUP BY sessionID
+            ) sc ON sc.sessionID = s.sessionID
+        """
+        params = []
+        if user_id:
+            query += " WHERE s.userID = ?"
+            params.append(user_id)
+        query += " ORDER BY s.startedAt DESC"
+        cursor.execute(query, params)
+        sessions = [dict(row) for row in cursor.fetchall()]
+        for row in sessions:
+            row['startSettings'] = _from_json(row.get('startSettings'))
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to fetch sessions.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify(sessions), 200
+
+
+@app.route('/api/experiment/translations', methods=['GET'])
+def get_experiment_translations():
+    user_id = request.args.get('userID')
+    session_id = request.args.get('sessionID')
+    raw_limit = request.args.get('limit', '2000')
+    try:
+        limit = min(max(int(raw_limit), 1), 10000)
+    except ValueError:
+        limit = 2000
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        query = """
+            SELECT eventID, userID, sessionID, docID, page, sourceText, translatedText,
+                   sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot
+            FROM translation_events
+            WHERE 1 = 1
+        """
+        params = []
+        if user_id:
+            query += " AND userID = ?"
+            params.append(user_id)
+        if session_id:
+            query += " AND sessionID = ?"
+            params.append(session_id)
+        query += " ORDER BY translatedAt DESC LIMIT ?"
+        params.append(limit)
+        cursor.execute(query, params)
+        events = [dict(row) for row in cursor.fetchall()]
+        for row in events:
+            row['settingsSnapshot'] = _from_json(row.get('settingsSnapshot'))
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to fetch translation events.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify(events), 200
+
+
+@app.route('/api/experiment/settings-changes', methods=['GET'])
+def get_experiment_settings_changes():
+    user_id = request.args.get('userID')
+    session_id = request.args.get('sessionID')
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        query = """
+            SELECT changeID, userID, sessionID, changedFields, oldSettings, newSettings, changedAt
+            FROM settings_change_events
+            WHERE 1 = 1
+        """
+        params = []
+        if user_id:
+            query += " AND userID = ?"
+            params.append(user_id)
+        if session_id:
+            query += " AND sessionID = ?"
+            params.append(session_id)
+        query += " ORDER BY changedAt DESC"
+        cursor.execute(query, params)
+        events = [dict(row) for row in cursor.fetchall()]
+        for row in events:
+            row['changedFields'] = _from_json(row.get('changedFields')) or []
+            row['oldSettings'] = _from_json(row.get('oldSettings'))
+            row['newSettings'] = _from_json(row.get('newSettings'))
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to fetch settings changes.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify(events), 200
+
+
+@app.route('/api/experiment/export', methods=['GET'])
+def export_experiment_data():
+    user_id = request.args.get('userID')
+    session_id = request.args.get('sessionID')
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    cursor = conn.cursor()
+
+    try:
+        query = """
+            SELECT
+                e.eventID, e.userID, u.username, e.sessionID,
+                s.startedAt AS sessionStartedAt, s.endedAt AS sessionEndedAt,
+                e.docID, e.page, e.sourceText, e.translatedText,
+                e.sourceLang, e.targetLang, e.translationMode, e.provider, e.translatedAt
+            FROM translation_events e
+            LEFT JOIN users u ON u.userID = e.userID
+            LEFT JOIN user_sessions s ON s.sessionID = e.sessionID
+            WHERE 1 = 1
+        """
+        params = []
+        if user_id:
+            query += " AND e.userID = ?"
+            params.append(user_id)
+        if session_id:
+            query += " AND e.sessionID = ?"
+            params.append(session_id)
+        query += " ORDER BY e.translatedAt DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to export experiment data.'}), 500
+    finally:
+        conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "eventID", "userID", "username", "sessionID", "sessionStartedAt",
+        "sessionEndedAt", "docID", "page", "sourceText", "translatedText",
+        "sourceLang", "targetLang", "translationMode", "provider", "translatedAt"
+    ])
+    for row in rows:
+        writer.writerow(row)
+
+    filename = f"experiment_translations_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 # -----------------------------User profile------------------------------------
 
 
@@ -515,6 +968,7 @@ def create_profile():
     print(user)
 
     if user:
+        conn.close()
         return jsonify({'message': 'Username already exists.'}), 400
 
     password = generate_password_hash(data['password'], method='sha256')
@@ -526,6 +980,7 @@ def create_profile():
 
     # Get the auto-generated userID if needed
     user_id = cursor.lastrowid
+    conn.close()
 
     return jsonify({'message': 'New user created.', 'userID': user_id}), 200
 
@@ -546,15 +1001,21 @@ def login():
     user = cursor.fetchone()
 
     if user is None:
+        conn.close()
         return jsonify({'message': 'Invalid username and password.'}), 400
 
     if not check_password_hash(user[2], password):
+        conn.close()
         return jsonify({'message': 'Invalid password.'}), 400
+
+    active_session_id = _get_active_session_id(cursor, user[0])
+    conn.close()
 
     return jsonify({
         'message': 'Logged in successfully.',
         'username': user[1],
-        'userID': user[0]
+        'userID': user[0],
+        'sessionID': active_session_id or ""
     }), 200
 
 # ----------------------------- Settings -------------------------------
@@ -570,20 +1031,53 @@ def update_settings():
     zoomLevel = data['zoomLevel']
     baseGazeSamples = data.get('baseGazeSamples', 60)
     translationMode = data.get('translationMode', 'word')
+    sessionID = data.get('sessionID')
 
     conn = sqlite3.connect(sqLiteDatabase)
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM user_settings WHERE userID = ?", (userID,))
-    user_settings = cursor.fetchone()
+    cursor.execute(
+        "SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode FROM user_settings WHERE userID = ?",
+        (userID,)
+    )
+    user_settings_row = cursor.fetchone()
+    old_settings = _settings_row_to_dict(user_settings_row)
 
-    if user_settings:
+    new_settings = {
+        "language": selected_language,
+        "theme": theme,
+        "zoomLevel": zoomLevel,
+        "baseGazeSamples": baseGazeSamples,
+        "translationMode": translationMode,
+    }
+    changed_fields = []
+    if old_settings is None:
+        changed_fields = list(new_settings.keys())
+    else:
+        changed_fields = [
+            key for key in new_settings.keys()
+            if old_settings.get(key) != new_settings.get(key)
+        ]
+
+    if user_settings_row:
         cursor.execute("UPDATE user_settings SET Selected_language = ?, theme = ?, zoomLevel = ?, baseGazeSamples = ?, translationMode = ? WHERE userID = ?",
                        (selected_language, theme, zoomLevel, baseGazeSamples, translationMode, userID))
     else:
         cursor.execute("INSERT INTO user_settings (userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode) VALUES (?, ?, ?, ?, ?, ?)",
                        (userID, selected_language, theme, zoomLevel, baseGazeSamples, translationMode))
+
+    if changed_fields:
+        if not sessionID:
+            sessionID = _get_active_session_id(cursor, userID)
+        cursor.execute(
+            """INSERT INTO settings_change_events(
+                userID, sessionID, changedFields, oldSettings, newSettings, changedAt
+            ) VALUES (?, ?, ?, ?, ?, ?)""",
+            (userID, sessionID, _to_json(changed_fields), _to_json(old_settings), _to_json(new_settings), _now_iso())
+        )
+
     conn.commit()
+    conn.close()
 
     return jsonify({'message': 'Settings updated.'}), 200
 

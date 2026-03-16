@@ -44,7 +44,7 @@ function Menu({ onCloseMenu }: MenuProps) {
     gazeYOffsetPx,
     gazeHitRadiusPx,
   } = userSettingsUi;
-  const { userID } = userInfo;
+  const { userID, sessionID } = userInfo;
   const [selectedOption, setSelectedOption] = useState("settings");
   const [loadingMenu, setLoadingMenu] = useState(false);
   const { triggerSnackbar } = useSnackbar();
@@ -72,6 +72,7 @@ function Menu({ onCloseMenu }: MenuProps) {
         axios
           .post(`${apiURL}/settings`, {
             userID,
+            sessionID,
             zoomLevel: zoom,
             theme,
             language,

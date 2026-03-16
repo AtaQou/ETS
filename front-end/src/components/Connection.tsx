@@ -9,6 +9,7 @@ import {
   dark_secondary,
   light_primary,
   light_secondary,
+  apiURL,
 } from "utils/consts";
 import { initEyeTracker } from "utils/initData";
 import Button from "./ui/Button";
@@ -34,6 +35,9 @@ const Connection: React.FC<ConnectionProps> = ({
 }) => {
   const {
     userSettingsApi,
+    userSettingsUi,
+    userInfo,
+    setUserInfo,
     isCalibrating,
     setIsCalibrating,
     selectedEyeTracker,
@@ -65,31 +69,52 @@ const Connection: React.FC<ConnectionProps> = ({
   };
 
   // Todo: cancel the request if modal closes
-  const handleConnect = () => {
+  const handleConnect = async () => {
     // console.log(`Connecting to ${selectedEyeTracker.device_name}`);
-    axios
-      .post("http://localhost:5000/api/connect", {
+    try {
+      const response = await axios.post(`${apiURL}/connect`, {
         address: selectedEyeTracker?.address,
-      })
-      .then((response) => {
-        setConnectionStatus("connected");
-        setIsEyeTrackerConnected?.(true);
-        // setIsCalibrating?.(true);
-        triggerSnackbar({
-          message: response.data.message,
-          status: "success",
-          open: true,
+      });
+      setConnectionStatus("connected");
+      setIsEyeTrackerConnected?.(true);
+      setUserInfo?.({
+        ...userInfo,
+        sessionID: "",
+      });
+      triggerSnackbar({
+        message: response.data.message,
+        status: "success",
+        open: true,
+      });
+
+      try {
+        const sessionResponse = await axios.post(`${apiURL}/session/start`, {
+          userID: userInfo.userID,
+          trackerAddress: selectedEyeTracker?.address,
+          trackerName: selectedEyeTracker?.device_name,
+          settings: userSettingsUi,
         });
-      })
-      .catch((err) => {
-        console.error(err);
-        setConnectionStatus("error");
+        setUserInfo?.({
+          ...userInfo,
+          sessionID: sessionResponse.data.sessionID || "",
+        });
+      } catch (sessionError) {
+        console.error(sessionError);
         triggerSnackbar({
-          message: "Connection failed!",
+          message: "Connected, but failed to start logging session.",
           status: "error",
           open: true,
         });
+      }
+    } catch (err) {
+      console.error(err);
+      setConnectionStatus("error");
+      triggerSnackbar({
+        message: "Connection failed!",
+        status: "error",
+        open: true,
       });
+    }
   };
 
   const onClickRecalibrate = () => {

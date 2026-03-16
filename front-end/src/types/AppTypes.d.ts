@@ -88,6 +88,7 @@ export interface IUserInfo {
   isLoggedIn: boolean;
   userID: string;
   username: string;
+  sessionID?: string;
 }
 
 export interface IUserSettings {

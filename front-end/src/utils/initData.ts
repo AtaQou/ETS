@@ -4,6 +4,7 @@ export const initUserInfo = {
   isLoggedIn: false,
   userID: "",
   username: "",
+  sessionID: "",
 };
 
 export const initEyeTracker = {

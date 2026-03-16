@@ -245,6 +245,31 @@ const TextBox = () => {
             const data = await response.json();
             const translatedText = data?.data?.translations?.[0]?.translatedText;
             setTranslation(translatedText || "");
+            if (translatedText && userInfo.userID && userInfo.sessionID) {
+              fetch(`${apiURL}/log-translation`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "application/json",
+                },
+                body: JSON.stringify({
+                  userID: userInfo.userID,
+                  sessionID: userInfo.sessionID,
+                  docID: selectedDocID,
+                  page: currentPage,
+                  sourceText: textToTranslate,
+                  translatedText,
+                  sourceLang: "en",
+                  targetLang: targetLanguage,
+                  translationMode: userSettingsUi.translationMode,
+                  provider: "google",
+                  translatedAt: new Date().toISOString(),
+                  settings: userSettingsUi,
+                }),
+              }).catch((logError) => {
+                console.error("Failed to log translation event:", logError);
+              });
+            }
           } else {
             const errorData = await response.json();
             console.error(
@@ -263,7 +288,9 @@ const TextBox = () => {
     shouldTranslate,
     selectedDocID,
     userInfo.userID,
+    userInfo.sessionID,
     currentPage,
+    userSettingsUi,
     userSettingsUi.translationMode,
   ]);
 
