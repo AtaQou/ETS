@@ -2,9 +2,11 @@ import io
 import csv
 import uuid
 import json
-import torch
+import os
+import re
 import asyncio
 import sqlite3
+import requests
 import traceback
 from flask_cors import CORS
 from PyPDF2 import PdfReader
@@ -14,7 +16,6 @@ from config import load_config
 from werkzeug.utils import secure_filename
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, Response
-from transformers import MarianMTModel, MarianTokenizer
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # our utils
@@ -30,8 +31,22 @@ sqLiteDatabase = 'ETSsqLiteDB'
 config_data = load_config()
 listening_port = config_data['ETSUIConfig']['ListeningPort']
 ETSDVM_address = config_data['ETSUIConfig']['ETSDVMport']
-
-MODELS = {}
+deepl_config = config_data.get('DeepLTranslator', {})
+DEEPL_API_KEY = os.getenv(
+    "DEEPL_API_KEY",
+    deepl_config.get("ApiKey", "")
+).strip()
+DEEPL_TRANSLATOR_ENDPOINT = os.getenv(
+    "DEEPL_TRANSLATOR_ENDPOINT",
+    deepl_config.get("Endpoint", "https://api-free.deepl.com/v2/translate")
+).strip()
+try:
+    DEEPL_TRANSLATOR_TIMEOUT_SECONDS = int(os.getenv(
+        "DEEPL_TRANSLATOR_TIMEOUT_SECONDS",
+        str(deepl_config.get("TimeoutSeconds", 12))
+    ))
+except ValueError:
+    DEEPL_TRANSLATOR_TIMEOUT_SECONDS = 12
 
 
 def ensure_settings_schema():
@@ -159,20 +174,35 @@ ensure_settings_schema()
 ensure_experiment_schema()
 
 
-def get_model(tgt_lang):
-    model_key = f'en-{tgt_lang}'
+def _normalize_ocr_token_for_translation(raw_token):
+    token = (raw_token or "").strip()
+    if not token:
+        return token
 
-    # Check if GPU/CUDA is available and set the device accordingly
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
-    if model_key not in MODELS:
-        model_name = f'Helsinki-NLP/opus-mt-en-{tgt_lang}'
-        # Load model and tokenizer and move the model to GPU if available
-        model = MarianMTModel.from_pretrained(model_name).to(device)
-        tokenizer = MarianTokenizer.from_pretrained(model_name)
-        MODELS[model_key] = (model, tokenizer)
+    # Common OCR confusion: uppercase "I" recognized as vertical bar.
+    token = token.replace("¦", "I").replace("ǀ", "I")
+    if token == "|":
+        return "I"
+    if token.startswith("|"):
+        return "I" + token[1:]
+    return token
 
-    return MODELS[model_key]
+
+def _normalize_text_for_translation(text):
+    if not text:
+        return text
+    return text.replace("¦", "I").replace("ǀ", "I").replace("|", "I")
+
+
+def _normalize_deepl_language(value, fallback):
+    candidate = (value or fallback or "").strip()
+    if not candidate:
+        return fallback
+    normalized = candidate.replace("-", "_").upper()
+    # DeepL expects EL for Greek.
+    if normalized == "GR":
+        return "EL"
+    return normalized
 
 
 def upload_file(file, user_id):
@@ -227,24 +257,73 @@ def upload_file(file, user_id):
 @app.route('/api/translate', methods=['POST'])
 def translate():
     try:
-        data = request.json
-        text = data['text']
-        tgt_lang = data['tgt']
+        data = request.get_json() or {}
+        text = _normalize_text_for_translation((data.get('text') or '').strip())
+        context = _normalize_text_for_translation((data.get('context') or '').strip())
+        mode = (data.get('mode') or data.get('translationMode') or 'word').strip().lower()
+        target_lang = _normalize_deepl_language(
+            data.get('tgt') or data.get('targetLang'),
+            "EL"
+        )
+        source_lang = _normalize_deepl_language(
+            data.get('src') or data.get('sourceLang'),
+            "EN"
+        )
 
-        model, tokenizer = get_model(tgt_lang)
+        if not text:
+            return jsonify({'message': 'text is required.'}), 400
 
-        # Ensuring the input tensors are on the same device as the model
-        inputs = tokenizer(text, return_tensors="pt",
-                           padding=True).to(model.device)
+        if not DEEPL_API_KEY:
+            return jsonify({'message': 'DeepL API key is not configured on the server.'}), 500
 
-        outputs = model.generate(**inputs)
-        translation = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        payload = {
+            "text": [text],
+            "target_lang": target_lang,
+            "source_lang": source_lang,
+            "preserve_formatting": True,
+        }
+        if context:
+            payload["context"] = context
 
-        return jsonify({'translation': translation})
+        response = requests.post(
+            DEEPL_TRANSLATOR_ENDPOINT,
+            headers={
+                "Authorization": f"DeepL-Auth-Key {DEEPL_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=DEEPL_TRANSLATOR_TIMEOUT_SECONDS
+        )
 
-    except Exception as e:
-        print(e)  # Logging the error can help in diagnosing the issue
-        return jsonify({'error': 'Unable to translate text'}), 500
+        if not response.ok:
+            try:
+                error_payload = response.json()
+            except ValueError:
+                error_payload = {"raw": response.text}
+            print("DeepL translate error:", error_payload)
+            return jsonify({
+                'message': 'Unable to translate text via DeepL.',
+                'details': error_payload
+            }), 502
+
+        response_data = response.json() or {}
+        translations = response_data.get("translations") or []
+        if not translations:
+            return jsonify({'message': 'DeepL returned no translations.'}), 502
+
+        translated_text = (translations[0].get("text") or "").strip()
+
+        return jsonify({
+            'translation': translated_text,
+            'provider': 'deepl',
+            'mode': mode,
+            'sourceText': text,
+            'contextUsed': bool(context),
+        }), 200
+
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to translate text'}), 500
 # --------------------------- Files --------------------------------
 
 
@@ -423,7 +502,7 @@ def _build_sentence_text(tokens):
     sentence_parts = []
     punctuation_tokens = {".", ",", "?", "!", ";", ":"}
     for token in tokens:
-        current = token.get("raw", "").strip()
+        current = _normalize_ocr_token_for_translation(token.get("raw", ""))
         if not current:
             continue
 
@@ -519,6 +598,8 @@ def sentence_from_focus():
             return jsonify({"success": False, "message": "No matching token found"}), 404
 
         matched_token = tokens[matched_idx]
+        matched_token_raw = matched_token.get("raw", "")
+        matched_token_normalized = _normalize_ocr_token_for_translation(matched_token_raw)
         scoped_tokens = [
             token for token in tokens
             if token.get("block_num") == matched_token.get("block_num")
@@ -542,12 +623,13 @@ def sentence_from_focus():
         sentence_tokens = scoped_tokens[start:end + 1]
         sentence_text = _build_sentence_text(sentence_tokens)
         if not sentence_text:
-            sentence_text = matched_token.get("raw", "")
+            sentence_text = matched_token_normalized
 
         return jsonify({
             "success": True,
             "sentence": sentence_text,
-            "matchedToken": matched_token.get("raw", ""),
+            "matchedToken": matched_token_normalized,
+            "matchedTokenRaw": matched_token_raw,
         }), 200
     except Exception:
         print(traceback.format_exc())
