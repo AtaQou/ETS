@@ -2,19 +2,21 @@ import io
 import csv
 import uuid
 import json
-import torch
+import os
+import re
 import asyncio
 import sqlite3
+import requests
 import traceback
 from flask_cors import CORS
 from PyPDF2 import PdfReader
+from html import unescape
 from functools import partial
 from datetime import datetime
 from config import load_config
 from werkzeug.utils import secure_filename
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask, request, jsonify, Response
-from transformers import MarianMTModel, MarianTokenizer
 from werkzeug.security import generate_password_hash, check_password_hash
 
 # our utils
@@ -30,8 +32,26 @@ sqLiteDatabase = 'ETSsqLiteDB'
 config_data = load_config()
 listening_port = config_data['ETSUIConfig']['ListeningPort']
 ETSDVM_address = config_data['ETSUIConfig']['ETSDVMport']
-
-MODELS = {}
+azure_config = config_data.get('AzureTranslator', {})
+AZURE_TRANSLATOR_KEY = os.getenv(
+    "AZURE_TRANSLATOR_API_KEY",
+    azure_config.get("ApiKey", "")
+).strip()
+AZURE_TRANSLATOR_ENDPOINT = os.getenv(
+    "AZURE_TRANSLATOR_ENDPOINT",
+    azure_config.get("Endpoint", "https://api.cognitive.microsofttranslator.com")
+).rstrip("/")
+AZURE_TRANSLATOR_REGION = os.getenv(
+    "AZURE_TRANSLATOR_REGION",
+    azure_config.get("Region", "global")
+).strip()
+try:
+    AZURE_TRANSLATOR_TIMEOUT_SECONDS = int(os.getenv(
+        "AZURE_TRANSLATOR_TIMEOUT_SECONDS",
+        str(azure_config.get("TimeoutSeconds", 12))
+    ))
+except ValueError:
+    AZURE_TRANSLATOR_TIMEOUT_SECONDS = 12
 
 
 def ensure_settings_schema():
@@ -159,20 +179,106 @@ ensure_settings_schema()
 ensure_experiment_schema()
 
 
-def get_model(tgt_lang):
-    model_key = f'en-{tgt_lang}'
+def _normalize_char_span(span, text):
+    if not isinstance(span, dict):
+        return None
+    if not text:
+        return None
 
-    # Check if GPU/CUDA is available and set the device accordingly
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
-    if model_key not in MODELS:
-        model_name = f'Helsinki-NLP/opus-mt-en-{tgt_lang}'
-        # Load model and tokenizer and move the model to GPU if available
-        model = MarianMTModel.from_pretrained(model_name).to(device)
-        tokenizer = MarianTokenizer.from_pretrained(model_name)
-        MODELS[model_key] = (model, tokenizer)
+    try:
+        start = int(span.get("start"))
+        end = int(span.get("end"))
+    except (TypeError, ValueError):
+        return None
 
-    return MODELS[model_key]
+    max_index = len(text) - 1
+    if max_index < 0:
+        return None
+
+    start = max(0, min(start, max_index))
+    end = max(0, min(end, max_index))
+    if end < start:
+        start, end = end, start
+
+    return {"start": start, "end": end}
+
+
+def _parse_alignment_proj(proj):
+    if not isinstance(proj, str) or not proj.strip():
+        return []
+
+    mappings = []
+    for pair in proj.split():
+        match = re.match(r"^(\d+):(\d+)-(\d+):(\d+)$", pair)
+        if not match:
+            continue
+        src_start, src_end, tgt_start, tgt_end = map(int, match.groups())
+        if src_end < src_start or tgt_end < tgt_start:
+            continue
+        mappings.append({
+            "src_start": src_start,
+            "src_end": src_end,
+            "tgt_start": tgt_start,
+            "tgt_end": tgt_end,
+        })
+    return mappings
+
+
+def _map_source_span_to_target_span(source_span, mappings):
+    if not source_span:
+        return None
+    if not mappings:
+        return None
+
+    src_start = source_span["start"]
+    src_end = source_span["end"]
+
+    overlapping = [
+        item for item in mappings
+        if not (item["src_end"] < src_start or item["src_start"] > src_end)
+    ]
+    if not overlapping:
+        return None
+
+    return {
+        "start": min(item["tgt_start"] for item in overlapping),
+        "end": max(item["tgt_end"] for item in overlapping),
+    }
+
+
+def _extract_target_span_text(text, span):
+    if not text or not span:
+        return ""
+    max_index = len(text) - 1
+    if max_index < 0:
+        return ""
+
+    start = max(0, min(int(span["start"]), max_index))
+    end = max(0, min(int(span["end"]), max_index))
+    if end < start:
+        return ""
+
+    return text[start:end + 1].strip()
+
+
+def _normalize_ocr_token_for_translation(raw_token):
+    token = (raw_token or "").strip()
+    if not token:
+        return token
+
+    # Common OCR confusion: uppercase "I" recognized as vertical bar.
+    token = token.replace("¦", "I").replace("ǀ", "I")
+    if token == "|":
+        return "I"
+    if token.startswith("|"):
+        return "I" + token[1:]
+    return token
+
+
+def _normalize_text_for_translation(text):
+    if not text:
+        return text
+    return text.replace("¦", "I").replace("ǀ", "I").replace("|", "I")
 
 
 def upload_file(file, user_id):
@@ -227,24 +333,84 @@ def upload_file(file, user_id):
 @app.route('/api/translate', methods=['POST'])
 def translate():
     try:
-        data = request.json
-        text = data['text']
-        tgt_lang = data['tgt']
+        data = request.get_json() or {}
+        text = (data.get('text') or "").strip()
+        text = _normalize_text_for_translation(text)
+        tgt_lang = (data.get('tgt') or data.get('targetLang') or "el").strip()
+        src_lang = (data.get('src') or data.get('sourceLang') or "en").strip()
+        mode = (data.get('mode') or data.get('translationMode') or "word").strip().lower()
+        source_span = _normalize_char_span(data.get("sourceSpan"), text)
 
-        model, tokenizer = get_model(tgt_lang)
+        if not text:
+            return jsonify({'message': 'text is required.'}), 400
 
-        # Ensuring the input tensors are on the same device as the model
-        inputs = tokenizer(text, return_tensors="pt",
-                           padding=True).to(model.device)
+        if not AZURE_TRANSLATOR_KEY:
+            return jsonify({'message': 'Azure Translator API key is not configured on the server.'}), 500
 
-        outputs = model.generate(**inputs)
-        translation = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        url = f"{AZURE_TRANSLATOR_ENDPOINT}/translate"
+        params = {
+            "api-version": "3.0",
+            "from": src_lang,
+            "to": tgt_lang,
+            "includeAlignment": "true",
+        }
+        headers = {
+            "Ocp-Apim-Subscription-Key": AZURE_TRANSLATOR_KEY,
+            "Content-Type": "application/json",
+        }
+        if AZURE_TRANSLATOR_REGION:
+            headers["Ocp-Apim-Subscription-Region"] = AZURE_TRANSLATOR_REGION
 
-        return jsonify({'translation': translation})
+        azure_response = requests.post(
+            url,
+            params=params,
+            headers=headers,
+            json=[{"text": text}],
+            timeout=AZURE_TRANSLATOR_TIMEOUT_SECONDS
+        )
 
-    except Exception as e:
-        print(e)  # Logging the error can help in diagnosing the issue
-        return jsonify({'error': 'Unable to translate text'}), 500
+        if not azure_response.ok:
+            try:
+                error_payload = azure_response.json()
+            except ValueError:
+                error_payload = {"raw": azure_response.text}
+            print("Azure translate error:", error_payload)
+            return jsonify({
+                'message': 'Unable to translate text via Azure.',
+                'details': error_payload
+            }), 502
+
+        payload = azure_response.json()
+        translations = (((payload or [{}])[0]).get("translations") or [])
+        if not translations:
+            return jsonify({'message': 'Azure returned no translations.'}), 502
+
+        translation_item = translations[0]
+        full_translation = unescape((translation_item.get("text") or "").strip())
+        alignment_proj = (translation_item.get("alignment") or {}).get("proj", "")
+        alignment_mappings = _parse_alignment_proj(alignment_proj)
+        target_span = _map_source_span_to_target_span(source_span, alignment_mappings)
+        aligned_translation = _extract_target_span_text(full_translation, target_span)
+
+        if mode == "sentence":
+            display_translation = full_translation
+        else:
+            display_translation = aligned_translation or full_translation
+
+        return jsonify({
+            'translation': display_translation,
+            'fullTranslation': full_translation,
+            'alignedTranslation': aligned_translation,
+            'sourceSpan': source_span,
+            'targetSpan': target_span,
+            'alignment': alignment_proj,
+            'provider': 'azure',
+            'mode': mode,
+        }), 200
+
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to translate text'}), 500
 # --------------------------- Files --------------------------------
 
 
@@ -419,20 +585,31 @@ def _is_sentence_boundary(raw_token):
     return any(ch in raw_token for ch in ".?!,")
 
 
-def _build_sentence_text(tokens):
-    sentence_parts = []
+def _build_sentence_text_with_spans(tokens):
+    sentence_text = ""
+    token_spans = []
     punctuation_tokens = {".", ",", "?", "!", ";", ":"}
+
     for token in tokens:
-        current = token.get("raw", "").strip()
+        current = _normalize_ocr_token_for_translation(token.get("raw", ""))
         if not current:
+            token_spans.append(None)
             continue
 
-        if sentence_parts and current in punctuation_tokens:
-            sentence_parts[-1] = sentence_parts[-1].rstrip() + current
+        if sentence_text and current in punctuation_tokens:
+            start = len(sentence_text)
+            sentence_text += current
+            end = len(sentence_text) - 1
         else:
-            sentence_parts.append(current)
+            if sentence_text:
+                sentence_text += " "
+            start = len(sentence_text)
+            sentence_text += current
+            end = len(sentence_text) - 1
 
-    return " ".join(sentence_parts).strip()
+        token_spans.append({"start": start, "end": end})
+
+    return sentence_text, token_spans
 
 
 @app.route('/api/words-positions', methods=['GET'])
@@ -519,6 +696,8 @@ def sentence_from_focus():
             return jsonify({"success": False, "message": "No matching token found"}), 404
 
         matched_token = tokens[matched_idx]
+        matched_token_raw = matched_token.get("raw", "")
+        matched_token_normalized = _normalize_ocr_token_for_translation(matched_token_raw)
         scoped_tokens = [
             token for token in tokens
             if token.get("block_num") == matched_token.get("block_num")
@@ -540,14 +719,23 @@ def sentence_from_focus():
             end += 1
 
         sentence_tokens = scoped_tokens[start:end + 1]
-        sentence_text = _build_sentence_text(sentence_tokens)
+        sentence_text, sentence_spans = _build_sentence_text_with_spans(sentence_tokens)
+        focused_local_sentence_idx = local_match_idx - start
+        focus_span = None
+        if 0 <= focused_local_sentence_idx < len(sentence_spans):
+            focus_span = sentence_spans[focused_local_sentence_idx]
+
         if not sentence_text:
-            sentence_text = matched_token.get("raw", "")
+            sentence_text = matched_token_normalized
+            if sentence_text:
+                focus_span = {"start": 0, "end": max(0, len(sentence_text) - 1)}
 
         return jsonify({
             "success": True,
             "sentence": sentence_text,
-            "matchedToken": matched_token.get("raw", ""),
+            "matchedToken": matched_token_normalized,
+            "matchedTokenRaw": matched_token_raw,
+            "focusSpan": focus_span,
         }), 200
     except Exception:
         print(traceback.format_exc())
