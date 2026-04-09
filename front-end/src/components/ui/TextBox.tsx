@@ -19,7 +19,6 @@ import usePrevious from "hooks/usePrevious";
 import { apiURL } from "utils/consts";
 
 const wordPadding = 20;
-const apiKey = "AIzaSyCgaeL8Nfo0U4ZgQZ9xDRGCOH27-dkj3Sg";
 const TextBox = () => {
   // const { eyeData } = useEyeTrackingData();
   const { eyeData } = useEyeTrackingStore();
@@ -182,8 +181,18 @@ const TextBox = () => {
       userID: string,
       page: number,
       focusBox?: number[]
-    ): Promise<string> => {
-      if (!focusBox || !docID || !userID) return "";
+    ): Promise<{
+      sentence: string;
+      matchedToken: string;
+      focusSpan: { start: number; end: number } | null;
+    }> => {
+      if (!focusBox || !docID || !userID) {
+        return {
+          sentence: "",
+          matchedToken: "",
+          focusSpan: null,
+        };
+      }
       try {
         const response = await fetch(`${apiURL}/sentence-from-focus`, {
           method: "POST",
@@ -198,54 +207,79 @@ const TextBox = () => {
             focusBox,
           }),
         });
-        if (!response.ok) return "";
+        if (!response.ok) {
+          return {
+            sentence: "",
+            matchedToken: "",
+            focusSpan: null,
+          };
+        }
         const data = await response.json();
-        return data?.sentence || "";
+        return {
+          sentence: data?.sentence || "",
+          matchedToken: data?.matchedToken || "",
+          focusSpan:
+            typeof data?.focusSpan?.start === "number" &&
+            typeof data?.focusSpan?.end === "number"
+              ? data.focusSpan
+              : null,
+        };
       } catch (error) {
         console.error("Error fetching sentence:", error);
-        return "";
+        return {
+          sentence: "",
+          matchedToken: "",
+          focusSpan: null,
+        };
       }
     };
 
     const fetchTranslation = async () => {
       setTranslation("");
       if (currentWord && shouldTranslate) {
-        const isSentenceMode = userSettingsUi.translationMode === "sentence";
+        const focusData = await getSentenceFromFocus(
+          selectedDocID,
+          userInfo.userID,
+          currentPage,
+          currentWord.sourceBox
+        );
         const sourceWord = currentWord.word;
-        let sourceSentence = "";
-        if (isSentenceMode) {
-          sourceSentence = await getSentenceFromFocus(
-            selectedDocID,
-            userInfo.userID,
-            currentPage,
-            currentWord.sourceBox
-          );
-        }
-        const textToTranslate =
-          isSentenceMode && sourceSentence ? sourceSentence : sourceWord;
-        if (!textToTranslate) return;
+        const sourceSentence = (focusData.sentence || sourceWord).trim();
+        if (!sourceSentence) return;
 
+        const targetLanguage =
+          userSettingsUi.language && userSettingsUi.language !== "en"
+            ? userSettingsUi.language
+            : "el";
         try {
-          const targetLanguage = "el";
           const response = await fetch(
-            `https://translation.googleapis.com/language/translate/v2?key=${apiKey}&source=en&target=${targetLanguage}&q=${encodeURIComponent(
-              textToTranslate
-            )}`,
-
+            `${apiURL}/translate`,
             {
-              method: "GET",
+              method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 Accept: "application/json",
               },
+              body: JSON.stringify({
+                text: sourceSentence,
+                src: "en",
+                tgt: targetLanguage,
+                mode: userSettingsUi.translationMode,
+                sourceSpan: focusData.focusSpan,
+              }),
             }
           );
 
           if (response.ok) {
             const data = await response.json();
-            const translatedText = data?.data?.translations?.[0]?.translatedText;
+            const translatedText = data?.translation || "";
             setTranslation(translatedText || "");
             if (translatedText && userInfo.userID && userInfo.sessionID) {
+              const sourceTextForLog =
+                userSettingsUi.translationMode === "sentence"
+                  ? sourceSentence
+                  : (focusData.matchedToken || sourceWord);
+
               fetch(`${apiURL}/log-translation`, {
                 method: "POST",
                 headers: {
@@ -257,12 +291,12 @@ const TextBox = () => {
                   sessionID: userInfo.sessionID,
                   docID: selectedDocID,
                   page: currentPage,
-                  sourceText: textToTranslate,
+                  sourceText: sourceTextForLog,
                   translatedText,
                   sourceLang: "en",
                   targetLang: targetLanguage,
                   translationMode: userSettingsUi.translationMode,
-                  provider: "google",
+                  provider: data?.provider || "azure",
                   translatedAt: new Date().toISOString(),
                   settings: userSettingsUi,
                 }),
@@ -271,11 +305,8 @@ const TextBox = () => {
               });
             }
           } else {
-            const errorData = await response.json();
-            console.error(
-              "Failed to fetch translation:",
-              errorData.error.message
-            );
+            const errorData = await response.json().catch(() => ({}));
+            console.error("Failed to fetch translation:", errorData);
           }
         } catch (error) {
           console.error("Error:", error);
