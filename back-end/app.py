@@ -40,6 +40,14 @@ DEEPL_TRANSLATOR_ENDPOINT = os.getenv(
     "DEEPL_TRANSLATOR_ENDPOINT",
     deepl_config.get("Endpoint", "https://api-free.deepl.com/v2/translate")
 ).strip()
+DEEPL_MODEL_TYPE = os.getenv(
+    "DEEPL_MODEL_TYPE",
+    deepl_config.get("ModelType", "quality_optimized")
+).strip()
+DEEPL_SPLIT_SENTENCES = os.getenv(
+    "DEEPL_SPLIT_SENTENCES",
+    str(deepl_config.get("SplitSentences", "0"))
+).strip()
 try:
     DEEPL_TRANSLATOR_TIMEOUT_SECONDS = int(os.getenv(
         "DEEPL_TRANSLATOR_TIMEOUT_SECONDS",
@@ -281,6 +289,8 @@ def translate():
             "target_lang": target_lang,
             "source_lang": source_lang,
             "preserve_formatting": True,
+            "model_type": DEEPL_MODEL_TYPE,
+            "split_sentences": DEEPL_SPLIT_SENTENCES,
         }
         if context:
             payload["context"] = context
@@ -312,6 +322,7 @@ def translate():
             return jsonify({'message': 'DeepL returned no translations.'}), 502
 
         translated_text = (translations[0].get("text") or "").strip()
+        model_type_used = translations[0].get("model_type_used")
 
         return jsonify({
             'translation': translated_text,
@@ -319,6 +330,8 @@ def translate():
             'mode': mode,
             'sourceText': text,
             'contextUsed': bool(context),
+            'modelTypeRequested': DEEPL_MODEL_TYPE,
+            'modelTypeUsed': model_type_used,
         }), 200
 
     except Exception:
