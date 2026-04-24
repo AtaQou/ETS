@@ -125,6 +125,24 @@ def ensure_experiment_schema():
     conn.close()
 
 
+def ensure_vocabulary_schema():
+    conn = sqlite3.connect(sqLiteDatabase)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS vocabulary_entries
+        ([entryID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER NOT NULL,
+         [sourceText] TEXT NOT NULL, [translatedText] TEXT NOT NULL, [translationMode] TEXT NOT NULL DEFAULT 'word',
+         [firstTranslatedAt] DATETIME NOT NULL,
+         UNIQUE(userID, translationMode, sourceText),
+         FOREIGN KEY(userID) REFERENCES users(userID))
+    ''')
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vocabulary_entries_user_mode_time ON vocabulary_entries(userID, translationMode, firstTranslatedAt DESC)"
+    )
+    conn.commit()
+    conn.close()
+
+
 def _now_iso():
     return datetime.now().isoformat(timespec='seconds')
 
@@ -180,6 +198,7 @@ def _get_db_settings(cursor, user_id):
 
 ensure_settings_schema()
 ensure_experiment_schema()
+ensure_vocabulary_schema()
 
 
 def _normalize_ocr_token_for_translation(raw_token):
@@ -793,7 +812,9 @@ def log_translation_event():
     translated_text = (data.get('translatedText') or '').strip()
     source_lang = data.get('sourceLang', 'en')
     target_lang = data.get('targetLang', 'el')
-    translation_mode = data.get('translationMode', 'word')
+    translation_mode = (data.get('translationMode') or 'word').strip().lower()
+    if translation_mode not in ('word', 'sentence'):
+        translation_mode = 'word'
     provider = data.get('provider', 'google')
     doc_id = data.get('docID')
     page = data.get('page')
@@ -848,6 +869,14 @@ def log_translation_event():
                 lastTranslatedAt = excluded.lastTranslatedAt""",
             (user_id, session_id, source_text, target_lang, translation_mode, 1, translated_text, translated_at)
         )
+
+        cursor.execute(
+            """INSERT INTO vocabulary_entries(
+                userID, sourceText, translatedText, translationMode, firstTranslatedAt
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(userID, translationMode, sourceText) DO NOTHING""",
+            (user_id, source_text, translated_text, translation_mode, translated_at)
+        )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -857,6 +886,38 @@ def log_translation_event():
         conn.close()
 
     return jsonify({'message': 'Translation event logged.'}), 200
+
+
+@app.route('/api/vocabulary', methods=['GET'])
+def get_vocabulary():
+    user_id = request.args.get('userID')
+    if not user_id:
+        return jsonify({'message': 'userID is required.'}), 400
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """SELECT entryID, userID, sourceText, translatedText, translationMode, firstTranslatedAt
+               FROM vocabulary_entries
+               WHERE userID = ?
+               ORDER BY firstTranslatedAt DESC""",
+            (user_id,)
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+    except Exception:
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to fetch vocabulary.'}), 500
+    finally:
+        conn.close()
+
+    vocabulary = {
+        'word': [row for row in rows if row.get('translationMode') == 'word'],
+        'sentence': [row for row in rows if row.get('translationMode') == 'sentence'],
+    }
+    return jsonify(vocabulary), 200
 
 
 @app.route('/api/experiment/sessions', methods=['GET'])
