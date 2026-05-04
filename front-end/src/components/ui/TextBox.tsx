@@ -343,6 +343,7 @@ const TextBox = () => {
       }
       setActiveTranslationEventID(null);
       setTranslation("");
+      setCoolDown(false);
       setShouldTranslate?.(false);
     } catch (error) {
       console.error("Failed to mark translation as undesired:", error);
@@ -387,6 +388,8 @@ const TextBox = () => {
       } else {
         setCoolDown(false);
       }
+    } else {
+      setCoolDown(false);
     }
   }, [eyeData]);
 
