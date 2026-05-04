@@ -93,11 +93,30 @@ def ensure_experiment_schema():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS translation_events
         ([eventID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER NOT NULL, [sessionID] TEXT NOT NULL,
-         [docID] INTEGER, [page] INTEGER, [sourceText] TEXT NOT NULL, [translatedText] TEXT NOT NULL,
+         [docID] INTEGER, [docName] TEXT, [page] INTEGER, [sourceText] TEXT NOT NULL, [translatedText] TEXT NOT NULL,
          [sourceLang] TEXT DEFAULT 'en', [targetLang] TEXT NOT NULL, [translationMode] TEXT DEFAULT 'word',
          [provider] TEXT DEFAULT 'google', [translatedAt] DATETIME NOT NULL, [settingsSnapshot] TEXT,
          FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
     ''')
+    cursor.execute("PRAGMA table_info(translation_events)")
+    translation_columns = {row[1] for row in cursor.fetchall()}
+    if 'docName' not in translation_columns:
+        cursor.execute("ALTER TABLE translation_events ADD COLUMN docName TEXT")
+        conn.commit()
+    cursor.execute(
+        """
+        UPDATE translation_events
+        SET docName = (
+            SELECT d.docName
+            FROM documents d
+            WHERE d.docID = translation_events.docID
+              AND d.userID = translation_events.userID
+            LIMIT 1
+        )
+        WHERE (docName IS NULL OR TRIM(docName) = '')
+          AND docID IS NOT NULL
+        """
+    )
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS translation_stats
         ([userID] INTEGER NOT NULL, [sessionID] TEXT NOT NULL, [sourceText] TEXT NOT NULL,
@@ -117,6 +136,9 @@ def ensure_experiment_schema():
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_translation_events_session_time ON translation_events(sessionID, translatedAt DESC)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_translation_events_user_doc_mode_time ON translation_events(userID, docName, translationMode, translatedAt DESC)"
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_settings_change_user_time ON settings_change_events(userID, changedAt DESC)"
@@ -194,6 +216,37 @@ def _get_db_settings(cursor, user_id):
         (user_id,)
     )
     return _settings_row_to_dict(cursor.fetchone())
+
+
+def _to_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_super_viewer(cursor, user_id):
+    parsed_user_id = _to_int(user_id)
+    if parsed_user_id is None:
+        return False
+    cursor.execute("SELECT username FROM users WHERE userID = ?", (parsed_user_id,))
+    row = cursor.fetchone()
+    if not row or not row[0]:
+        return False
+    return str(row[0]).strip().casefold() == "sotiris"
+
+
+def _resolve_requested_user_scope(cursor, requester_user_id, requested_user_id=None):
+    requester_id = _to_int(requester_user_id)
+    requested_id = _to_int(requested_user_id)
+    if requester_id is None and requested_id is not None:
+        requester_id = requested_id
+    can_view_all = _is_super_viewer(cursor, requester_id)
+    if requested_id is not None:
+        effective_user_id = requested_id if can_view_all else requester_id
+    else:
+        effective_user_id = None if can_view_all else requester_id
+    return requester_id, effective_user_id, can_view_all
 
 
 ensure_settings_schema()
@@ -817,6 +870,7 @@ def log_translation_event():
         translation_mode = 'word'
     provider = data.get('provider', 'google')
     doc_id = data.get('docID')
+    doc_name = (data.get('docName') or '').strip()
     page = data.get('page')
     translated_at = data.get('translatedAt') or _now_iso()
     settings_snapshot = data.get('settings')
@@ -847,13 +901,28 @@ def log_translation_event():
         if settings_snapshot is None:
             settings_snapshot = _get_db_settings(cursor, user_id)
 
+        if not doc_name and doc_id is not None:
+            cursor.execute(
+                "SELECT docName FROM documents WHERE docID = ? AND userID = ?",
+                (doc_id, user_id)
+            )
+            doc_row = cursor.fetchone()
+            if doc_row and doc_row[0]:
+                doc_name = doc_row[0]
+
+        if isinstance(settings_snapshot, dict):
+            settings_snapshot = {
+                **settings_snapshot,
+                "currentPdfFile": doc_name or None,
+            }
+
         cursor.execute(
             """INSERT INTO translation_events(
-                userID, sessionID, docID, page, sourceText, translatedText,
+                userID, sessionID, docID, docName, page, sourceText, translatedText,
                 sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
-                user_id, session_id, doc_id, page, source_text, translated_text,
+                user_id, session_id, doc_id, doc_name or None, page, source_text, translated_text,
                 source_lang, target_lang, translation_mode, provider, translated_at, _to_json(settings_snapshot)
             )
         )
@@ -870,13 +939,6 @@ def log_translation_event():
             (user_id, session_id, source_text, target_lang, translation_mode, 1, translated_text, translated_at)
         )
 
-        cursor.execute(
-            """INSERT INTO vocabulary_entries(
-                userID, sourceText, translatedText, translationMode, firstTranslatedAt
-            ) VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(userID, translationMode, sourceText) DO NOTHING""",
-            (user_id, source_text, translated_text, translation_mode, translated_at)
-        )
         conn.commit()
     except Exception:
         conn.rollback()
@@ -890,23 +952,89 @@ def log_translation_event():
 
 @app.route('/api/vocabulary', methods=['GET'])
 def get_vocabulary():
-    user_id = request.args.get('userID')
-    if not user_id:
-        return jsonify({'message': 'userID is required.'}), 400
+    requested_user_id = request.args.get('userID')
+    requester_user_id = request.args.get('requesterUserID')
+    selected_doc_name = (request.args.get('docName') or '').strip()
 
     conn = sqlite3.connect(sqLiteDatabase)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     try:
+        requester_id, effective_user_id, can_view_all = _resolve_requested_user_scope(
+            cursor,
+            requester_user_id,
+            requested_user_id
+        )
+        if requester_id is None:
+            return jsonify({'message': 'requesterUserID is required.'}), 400
+        if effective_user_id is None:
+            effective_user_id = requester_id
+
         cursor.execute(
-            """SELECT entryID, userID, sourceText, translatedText, translationMode, firstTranslatedAt
-               FROM vocabulary_entries
-               WHERE userID = ?
-               ORDER BY firstTranslatedAt DESC""",
-            (user_id,)
+            """
+            WITH translation_rows AS (
+                SELECT
+                    e.eventID,
+                    e.userID,
+                    e.sourceText,
+                    e.translatedText,
+                    e.translationMode,
+                    e.translatedAt,
+                    e.docID,
+                    COALESCE(NULLIF(TRIM(e.docName), ''), d.docName, '') AS docName
+                FROM translation_events e
+                LEFT JOIN documents d
+                    ON d.docID = e.docID AND d.userID = e.userID
+                WHERE e.userID = ?
+                  AND (? = '' OR COALESCE(NULLIF(TRIM(e.docName), ''), d.docName, '') = ?)
+            ),
+            ranked AS (
+                SELECT
+                    eventID,
+                    userID,
+                    sourceText,
+                    translatedText,
+                    translationMode,
+                    translatedAt AS firstTranslatedAt,
+                    docID,
+                    docName,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY translationMode, LOWER(TRIM(sourceText))
+                        ORDER BY translatedAt ASC, eventID ASC
+                    ) AS rowRank
+                FROM translation_rows
+            )
+            SELECT
+                eventID AS entryID,
+                userID,
+                sourceText,
+                translatedText,
+                translationMode,
+                firstTranslatedAt,
+                docID,
+                docName
+            FROM ranked
+            WHERE rowRank = 1
+            ORDER BY firstTranslatedAt DESC
+            """,
+            (effective_user_id, selected_doc_name, selected_doc_name)
         )
         rows = [dict(row) for row in cursor.fetchall()]
+
+        cursor.execute(
+            """
+            SELECT DISTINCT COALESCE(NULLIF(TRIM(e.docName), ''), d.docName, '') AS docName
+            FROM translation_events e
+            LEFT JOIN documents d
+                ON d.docID = e.docID AND d.userID = e.userID
+            WHERE e.userID = ?
+              AND COALESCE(NULLIF(TRIM(e.docName), ''), d.docName, '') <> ''
+            ORDER BY docName ASC
+            """,
+            (effective_user_id,)
+        )
+        doc_names = [row["docName"] for row in cursor.fetchall() if row["docName"]]
     except Exception:
         print(traceback.format_exc())
         return jsonify({'message': 'Unable to fetch vocabulary.'}), 500
@@ -916,18 +1044,30 @@ def get_vocabulary():
     vocabulary = {
         'word': [row for row in rows if row.get('translationMode') == 'word'],
         'sentence': [row for row in rows if row.get('translationMode') == 'sentence'],
+        'documents': doc_names,
+        'effectiveUserID': effective_user_id,
+        'canViewAllUsers': can_view_all,
     }
     return jsonify(vocabulary), 200
 
 
 @app.route('/api/experiment/sessions', methods=['GET'])
 def get_experiment_sessions():
-    user_id = request.args.get('userID')
+    requested_user_id = request.args.get('userID')
+    requester_user_id = request.args.get('requesterUserID')
     conn = sqlite3.connect(sqLiteDatabase)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     try:
+        requester_id, effective_user_id, _can_view_all = _resolve_requested_user_scope(
+            cursor,
+            requester_user_id,
+            requested_user_id
+        )
+        if requester_id is None:
+            return jsonify({'message': 'requesterUserID is required.'}), 400
+
         query = """
             SELECT
                 s.sessionID, s.userID, u.username, s.trackerAddress, s.trackerName,
@@ -948,9 +1088,9 @@ def get_experiment_sessions():
             ) sc ON sc.sessionID = s.sessionID
         """
         params = []
-        if user_id:
+        if effective_user_id is not None:
             query += " WHERE s.userID = ?"
-            params.append(user_id)
+            params.append(effective_user_id)
         query += " ORDER BY s.startedAt DESC"
         cursor.execute(query, params)
         sessions = [dict(row) for row in cursor.fetchall()]
@@ -967,12 +1107,21 @@ def get_experiment_sessions():
 
 @app.route('/api/experiment/users', methods=['GET'])
 def get_experiment_users():
+    requester_user_id = request.args.get('requesterUserID')
     conn = sqlite3.connect(sqLiteDatabase)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
+        requester_id, _effective_user_id, can_view_all = _resolve_requested_user_scope(
+            cursor,
+            requester_user_id,
+            None
+        )
+        if requester_id is None:
+            return jsonify({'message': 'requesterUserID is required.'}), 400
+
+        query = """
             SELECT
                 u.userID,
                 u.username,
@@ -989,8 +1138,13 @@ def get_experiment_users():
                 FROM translation_events
                 GROUP BY userID
             ) t ON t.userID = u.userID
-            ORDER BY u.userID ASC
-        """)
+        """
+        params = []
+        if not can_view_all:
+            query += " WHERE u.userID = ?"
+            params.append(requester_id)
+        query += " ORDER BY u.userID ASC"
+        cursor.execute(query, params)
         users = [dict(row) for row in cursor.fetchall()]
     except Exception:
         print(traceback.format_exc())
@@ -1003,7 +1157,8 @@ def get_experiment_users():
 
 @app.route('/api/experiment/translations', methods=['GET'])
 def get_experiment_translations():
-    user_id = request.args.get('userID')
+    requested_user_id = request.args.get('userID')
+    requester_user_id = request.args.get('requesterUserID')
     session_id = request.args.get('sessionID')
     raw_limit = request.args.get('limit', '2000')
     try:
@@ -1016,16 +1171,24 @@ def get_experiment_translations():
     cursor = conn.cursor()
 
     try:
+        requester_id, effective_user_id, _can_view_all = _resolve_requested_user_scope(
+            cursor,
+            requester_user_id,
+            requested_user_id
+        )
+        if requester_id is None:
+            return jsonify({'message': 'requesterUserID is required.'}), 400
+
         query = """
-            SELECT eventID, userID, sessionID, docID, page, sourceText, translatedText,
+            SELECT eventID, userID, sessionID, docID, docName, page, sourceText, translatedText,
                    sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot
             FROM translation_events
             WHERE 1 = 1
         """
         params = []
-        if user_id:
+        if effective_user_id is not None:
             query += " AND userID = ?"
-            params.append(user_id)
+            params.append(effective_user_id)
         if session_id:
             query += " AND sessionID = ?"
             params.append(session_id)
@@ -1046,7 +1209,8 @@ def get_experiment_translations():
 
 @app.route('/api/experiment/settings-changes', methods=['GET'])
 def get_experiment_settings_changes():
-    user_id = request.args.get('userID')
+    requested_user_id = request.args.get('userID')
+    requester_user_id = request.args.get('requesterUserID')
     session_id = request.args.get('sessionID')
 
     conn = sqlite3.connect(sqLiteDatabase)
@@ -1054,15 +1218,23 @@ def get_experiment_settings_changes():
     cursor = conn.cursor()
 
     try:
+        requester_id, effective_user_id, _can_view_all = _resolve_requested_user_scope(
+            cursor,
+            requester_user_id,
+            requested_user_id
+        )
+        if requester_id is None:
+            return jsonify({'message': 'requesterUserID is required.'}), 400
+
         query = """
             SELECT changeID, userID, sessionID, changedFields, oldSettings, newSettings, changedAt
             FROM settings_change_events
             WHERE 1 = 1
         """
         params = []
-        if user_id:
+        if effective_user_id is not None:
             query += " AND userID = ?"
-            params.append(user_id)
+            params.append(effective_user_id)
         if session_id:
             query += " AND sessionID = ?"
             params.append(session_id)
@@ -1084,18 +1256,27 @@ def get_experiment_settings_changes():
 
 @app.route('/api/experiment/export', methods=['GET'])
 def export_experiment_data():
-    user_id = request.args.get('userID')
+    requested_user_id = request.args.get('userID')
+    requester_user_id = request.args.get('requesterUserID')
     session_id = request.args.get('sessionID')
 
     conn = sqlite3.connect(sqLiteDatabase)
     cursor = conn.cursor()
 
     try:
+        requester_id, effective_user_id, _can_view_all = _resolve_requested_user_scope(
+            cursor,
+            requester_user_id,
+            requested_user_id
+        )
+        if requester_id is None:
+            return jsonify({'message': 'requesterUserID is required.'}), 400
+
         query = """
             SELECT
                 e.eventID, e.userID, u.username, e.sessionID,
                 s.startedAt AS sessionStartedAt, s.endedAt AS sessionEndedAt,
-                e.docID, e.page, e.sourceText, e.translatedText,
+                e.docID, e.docName, e.page, e.sourceText, e.translatedText,
                 e.sourceLang, e.targetLang, e.translationMode, e.provider, e.translatedAt
             FROM translation_events e
             LEFT JOIN users u ON u.userID = e.userID
@@ -1103,9 +1284,9 @@ def export_experiment_data():
             WHERE 1 = 1
         """
         params = []
-        if user_id:
+        if effective_user_id is not None:
             query += " AND e.userID = ?"
-            params.append(user_id)
+            params.append(effective_user_id)
         if session_id:
             query += " AND e.sessionID = ?"
             params.append(session_id)
@@ -1123,7 +1304,7 @@ def export_experiment_data():
     writer = csv.writer(output)
     writer.writerow([
         "eventID", "userID", "username", "sessionID", "sessionStartedAt",
-        "sessionEndedAt", "docID", "page", "sourceText", "translatedText",
+        "sessionEndedAt", "docID", "docName", "page", "sourceText", "translatedText",
         "sourceLang", "targetLang", "translationMode", "provider", "translatedAt"
     ])
     for row in rows:

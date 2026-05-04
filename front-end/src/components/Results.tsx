@@ -31,6 +31,7 @@ interface ITranslationEvent {
   userID: number;
   sessionID: string;
   docID?: number;
+  docName?: string;
   page?: number;
   sourceText: string;
   translatedText: string;
@@ -39,6 +40,7 @@ interface ITranslationEvent {
   translationMode: string;
   provider: string;
   translatedAt: string;
+  settingsSnapshot?: Record<string, any> | string | null;
 }
 
 interface ISettingsChangeEvent {
@@ -100,6 +102,10 @@ const Results: FC = () => {
     () => sessions.find((session) => session.sessionID === selectedSessionID),
     [sessions, selectedSessionID]
   );
+  const latestTranslatedPdf = useMemo(
+    () => translations.find((item) => !!item.docName)?.docName || "",
+    [translations]
+  );
 
   const timeline = useMemo<ITimelineRow[]>(() => {
     const translationRows: ITimelineRow[] = translations.map((item) => ({
@@ -127,9 +133,19 @@ const Results: FC = () => {
   }, [settingsChanges, translations]);
 
   useEffect(() => {
+    if (!userInfo.userID) {
+      setUsers([]);
+      setSelectedUserID("");
+      return;
+    }
     setLoading(true);
+    setError("");
     axios
-      .get(`${apiURL}/experiment/users`)
+      .get(`${apiURL}/experiment/users`, {
+        params: {
+          requesterUserID: userInfo.userID,
+        },
+      })
       .then((response) => {
         const fetchedUsers: IExperimentUser[] = response.data || [];
         setUsers(fetchedUsers);
@@ -159,7 +175,7 @@ const Results: FC = () => {
     setError("");
     axios
       .get(`${apiURL}/experiment/sessions`, {
-        params: { userID: selectedUserID },
+        params: { userID: selectedUserID, requesterUserID: userInfo.userID },
       })
       .then((response) => {
         const fetchedSessions: ISessionRow[] = response.data || [];
@@ -176,7 +192,7 @@ const Results: FC = () => {
       .finally(() => {
         setLoading(false);
       });
-  }, [selectedUserID]);
+  }, [selectedUserID, userInfo.userID]);
 
   useEffect(() => {
     if (!selectedUserID || !selectedSessionID) {
@@ -189,10 +205,19 @@ const Results: FC = () => {
     setError("");
     Promise.all([
       axios.get(`${apiURL}/experiment/translations`, {
-        params: { userID: selectedUserID, sessionID: selectedSessionID, limit: 10000 },
+        params: {
+          userID: selectedUserID,
+          sessionID: selectedSessionID,
+          requesterUserID: userInfo.userID,
+          limit: 10000,
+        },
       }),
       axios.get(`${apiURL}/experiment/settings-changes`, {
-        params: { userID: selectedUserID, sessionID: selectedSessionID },
+        params: {
+          userID: selectedUserID,
+          sessionID: selectedSessionID,
+          requesterUserID: userInfo.userID,
+        },
       }),
     ])
       .then(([translationsResponse, settingsChangesResponse]) => {
@@ -205,17 +230,21 @@ const Results: FC = () => {
       .finally(() => {
         setLoadingDetails(false);
       });
-  }, [selectedSessionID, selectedUserID]);
+  }, [selectedSessionID, selectedUserID, userInfo.userID]);
 
   const renderStartSettings = () => {
     const settingsObject = toObject(selectedSession?.startSettings);
     if (!settingsObject) {
       return <div className='text-sm'>No captured start settings.</div>;
     }
+    const settingsWithPdf = {
+      ...settingsObject,
+      currentPdfFile: latestTranslatedPdf || "-",
+    };
 
     return (
       <div className='grid grid-cols-2 gap-2 text-sm'>
-        {Object.entries(settingsObject).map(([key, value]) => (
+        {Object.entries(settingsWithPdf).map(([key, value]) => (
           <div key={key} className='flex justify-between border-b border-gray-200 py-1'>
             <div className='font-semibold mr-4'>{key}</div>
             <div className='text-right'>{stringifyValue(value)}</div>
@@ -334,7 +363,7 @@ const Results: FC = () => {
                     <div className='col-span-2'>{formatDate(item.timestamp)}</div>
                     <div className='col-span-1'>translation</div>
                     <div className='col-span-3'>
-                      "{translation.sourceText}" → "{translation.translatedText}" (mode: {translation.translationMode}, page: {translation.page || "-"})
+                      "{translation.sourceText}" → "{translation.translatedText}" (mode: {translation.translationMode}, page: {translation.page || "-"}, pdf: {translation.docName || "-"})
                     </div>
                   </div>
                 );
