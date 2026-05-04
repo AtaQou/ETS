@@ -26,11 +26,13 @@ function Menu({ onCloseMenu }: MenuProps) {
     setLoading,
     selectedDocID,
     userInfo,
+    setUserInfo,
     setIsMenuOpen,
     userSettingsUi,
     userSettingsApi,
     setSelectedDocID,
     setUserSettingsApi,
+    selectedEyeTracker,
   } = useContext<IContextProps>(Context);
   const {
     zoom,
@@ -38,6 +40,7 @@ function Menu({ onCloseMenu }: MenuProps) {
     language,
     baseGazeSamples,
     translationMode,
+    translationOutputMode,
     showBoxes,
     hoverTranslateDebug,
     showGazeCursor,
@@ -65,13 +68,69 @@ function Menu({ onCloseMenu }: MenuProps) {
 
   const isDarkTheme = userSettingsApi.theme === "dark";
 
-  const onConfirm = (id: ID) => {
+  const rotateSession = async (
+    reason: string,
+    startSettings: typeof userSettingsUi
+  ) => {
+    if (!userID || !userInfo.sessionID) {
+      return;
+    }
+    try {
+      await axios.post(`${apiURL}/session/end`, {
+        userID,
+        sessionID: userInfo.sessionID,
+        reason,
+      });
+    } catch (err) {
+      console.error(err);
+    }
+
+    try {
+      const sessionResponse = await axios.post(`${apiURL}/session/start`, {
+        userID,
+        trackerAddress: selectedEyeTracker?.address,
+        trackerName: selectedEyeTracker?.device_name,
+        settings: startSettings,
+      });
+      setUserInfo?.({
+        ...userInfo,
+        sessionID: sessionResponse.data.sessionID || "",
+      });
+    } catch (err) {
+      console.error(err);
+      setUserInfo?.({
+        ...userInfo,
+        sessionID: "",
+      });
+    }
+  };
+
+  const onConfirm = async (id: ID) => {
+    const nextDocSelection = id || docID;
     setLoadingMenu(true);
     setLoading?.(true);
-    setSelectedDocID?.(docID)
+    setSelectedDocID?.(nextDocSelection)
     if (selectedOption === "settings") {
       if (!settingsHaveChanges) {
       } else {
+        const nextSettings = {
+          zoom,
+          theme,
+          language,
+          baseGazeSamples,
+          translationMode,
+          translationOutputMode,
+          showBoxes,
+          hoverTranslateDebug,
+          showGazeCursor,
+          gazeDetectionMode,
+          gazeYOffsetPx,
+          gazeHitRadiusPx,
+        };
+        const outputModeChanged =
+          (userSettingsUi.translationOutputMode || "on") !==
+          (userSettingsApi.translationOutputMode || "on");
+
         axios
           .post(`${apiURL}/settings`, {
             userID,
@@ -81,23 +140,15 @@ function Menu({ onCloseMenu }: MenuProps) {
             language,
             baseGazeSamples,
             translationMode,
+            translationOutputMode,
           })
-          .then((res) => {
+          .then(async (_res) => {
+            if (outputModeChanged) {
+              await rotateSession("translation_output_mode_changed", nextSettings);
+            }
             setLoadingMenu(false);
             loadFile?.(file);
-            setUserSettingsApi?.({
-              zoom,
-              theme,
-              language,
-              baseGazeSamples,
-              translationMode,
-              showBoxes,
-              hoverTranslateDebug,
-              showGazeCursor,
-              gazeDetectionMode,
-              gazeYOffsetPx,
-              gazeHitRadiusPx,
-            });
+            setUserSettingsApi?.(nextSettings);
             triggerSnackbar({
               message: "Settings saved successfully!",
               status: "success",
@@ -112,18 +163,26 @@ function Menu({ onCloseMenu }: MenuProps) {
       }
     }
     if (selectedOption === "documents" || selectedOption === "upload") {
+      const nextDocId = nextDocSelection;
+      const previousDocId = selectedDocID;
+      const shouldRotateForDocChange =
+        !!previousDocId && String(previousDocId) !== String(nextDocId);
+
       axios
         .get(`${apiURL}/get_file`, {
           params: {
-            docID: id || docID,
+            docID: nextDocId,
             userID,
           },
           responseType: "blob",
         })
-        .then((response) => {
+        .then(async (response) => {
           const fileBlob = new Blob([response.data], {
             type: response.data.type,
           });
+          if (shouldRotateForDocChange) {
+            await rotateSession("document_changed", userSettingsUi);
+          }
           setLoadingMenu(false);
           loadFile?.(fileBlob);
           setLoading?.(false);

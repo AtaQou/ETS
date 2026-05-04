@@ -218,7 +218,10 @@ const TextBox = () => {
       setTranslation("");
       setActiveTranslationEventID(null);
       if (currentWord && shouldTranslate) {
-        const isSentenceMode = userSettingsUi.translationMode === "sentence";
+        const translationOutputMode = userSettingsUi.translationOutputMode || "on";
+        const effectiveTranslationMode =
+          translationOutputMode === "off" ? "word" : userSettingsUi.translationMode;
+        const isSentenceMode = effectiveTranslationMode === "sentence";
         const sourceWord = currentWord.word;
         const sentenceData = await getSentenceFromFocus(
           selectedDocID,
@@ -252,7 +255,7 @@ const TextBox = () => {
                 context: isSentenceMode ? "" : sourceSentence,
                 src: "en",
                 tgt: targetLanguage,
-                mode: userSettingsUi.translationMode,
+                mode: effectiveTranslationMode,
               }),
             }
           );
@@ -260,7 +263,11 @@ const TextBox = () => {
           if (response.ok) {
             const data = await response.json();
             const translatedText = data?.translation || "";
-            setTranslation(translatedText || "");
+            if (translationOutputMode === "on") {
+              setTranslation(translatedText || "");
+            } else {
+              setTranslation("");
+            }
             if (translatedText && userInfo.userID && userInfo.sessionID) {
               try {
                 const logResponse = await fetch(`${apiURL}/log-translation`, {
@@ -278,7 +285,8 @@ const TextBox = () => {
                     translatedText,
                     sourceLang: "en",
                     targetLang: targetLanguage,
-                    translationMode: userSettingsUi.translationMode,
+                    translationMode: effectiveTranslationMode,
+                    translationOutputMode,
                     provider: data?.provider || "deepl",
                     translatedAt: new Date().toISOString(),
                     settings: userSettingsUi,
@@ -287,9 +295,13 @@ const TextBox = () => {
                 });
                 if (logResponse.ok) {
                   const logData = await logResponse.json();
-                  setActiveTranslationEventID(
-                    typeof logData?.eventID === "number" ? logData.eventID : null
-                  );
+                  if (translationOutputMode === "on") {
+                    setActiveTranslationEventID(
+                      typeof logData?.eventID === "number" ? logData.eventID : null
+                    );
+                  } else {
+                    setActiveTranslationEventID(null);
+                  }
                 } else {
                   setActiveTranslationEventID(null);
                 }
@@ -317,6 +329,7 @@ const TextBox = () => {
     currentPage,
     userSettingsUi,
     userSettingsUi.translationMode,
+    userSettingsUi.translationOutputMode,
   ]);
 
   const handleMarkUndesiredTranslation = async () => {
@@ -419,7 +432,9 @@ const TextBox = () => {
         }}
       >
         <div className='relative'>
-          {shouldTranslate && translation.trim().length > 0 && (
+          {shouldTranslate &&
+            (userSettingsUi.translationOutputMode || "on") === "on" &&
+            translation.trim().length > 0 && (
             <TranslationPopup
               translation={translation}
               offset={(currentWord?.wordCoords.width || 0) + wordPadding}

@@ -12,7 +12,7 @@ def initializeDatabase():
 
     c.execute('''
             CREATE TABLE IF NOT EXISTS user_settings
-            ([userID] INTEGER, [Selected_language] TEXT, [theme] TEXT, [zoomLevel] INTEGER, [baseGazeSamples] INTEGER DEFAULT 60, [translationMode] TEXT DEFAULT 'word',
+            ([userID] INTEGER, [Selected_language] TEXT, [theme] TEXT, [zoomLevel] INTEGER, [baseGazeSamples] INTEGER DEFAULT 60, [translationMode] TEXT DEFAULT 'word', [translationOutputMode] TEXT DEFAULT 'on',
             FOREIGN KEY(userID) REFERENCES users(userID))
             ''')
 
@@ -41,7 +41,7 @@ def initializeDatabase():
             CREATE TABLE IF NOT EXISTS translation_events
             ([eventID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER, [sessionID] TEXT,
             [docID] INTEGER, [page] INTEGER, [sourceText] TEXT, [translatedText] TEXT, [sourceLang] TEXT,
-            [targetLang] TEXT, [translationMode] TEXT, [provider] TEXT, [translatedAt] DATETIME, [settingsSnapshot] TEXT,
+            [targetLang] TEXT, [translationMode] TEXT, [provider] TEXT, [translatedAt] DATETIME, [settingsSnapshot] TEXT, [translationOutputMode] TEXT DEFAULT 'on', [isUndesired] INTEGER DEFAULT 0,
             FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
             ''')
 

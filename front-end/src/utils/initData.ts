@@ -17,6 +17,7 @@ export const initSettings: IUserSettings = {
     language: "en",
     baseGazeSamples: 60,
     translationMode: "word",
+    translationOutputMode: "on",
     showBoxes: false, // νέο default
     hoverTranslateDebug: false,
     showGazeCursor: false,

@@ -41,6 +41,7 @@ interface ITranslationEvent {
   provider: string;
   translatedAt: string;
   settingsSnapshot?: Record<string, any> | string | null;
+  translationOutputMode?: "on" | "off" | string;
   isUndesired?: number;
 }
 
@@ -85,6 +86,13 @@ const toObject = (value: any) => {
   return value as Record<string, any>;
 };
 
+const getTranslationOutputMode = (settings: Record<string, any> | string | null | undefined) => {
+  const obj = toObject(settings);
+  if (!obj) return "on";
+  const mode = String(obj.translationOutputMode || "").toLowerCase();
+  return mode === "off" ? "off" : "on";
+};
+
 const Results: FC = () => {
   const { userSettingsApi, userInfo } = useContext<IContextProps>(Context);
   const isDarkTheme = userSettingsApi.theme === "dark";
@@ -106,6 +114,10 @@ const Results: FC = () => {
   const latestTranslatedPdf = useMemo(
     () => translations.find((item) => !!item.docName)?.docName || "",
     [translations]
+  );
+  const selectedSessionOutputMode = useMemo(
+    () => getTranslationOutputMode(selectedSession?.startSettings),
+    [selectedSession]
   );
 
   const timeline = useMemo<ITimelineRow[]>(() => {
@@ -296,7 +308,7 @@ const Results: FC = () => {
             {!sessions.length && <option value=''>No sessions</option>}
             {sessions.map((session) => (
               <option key={session.sessionID} value={session.sessionID}>
-                {session.sessionID.slice(0, 8)}... | {formatDate(session.startedAt)} | translations: {session.translationCount}
+                {session.sessionID.slice(0, 8)}... | {formatDate(session.startedAt)} | mode: {getTranslationOutputMode(session.startSettings) === "off" ? "translation_off" : "translation_on"} | translations: {session.translationCount}
               </option>
             ))}
           </select>
@@ -364,7 +376,9 @@ const Results: FC = () => {
                     <div className='col-span-2'>{formatDate(item.timestamp)}</div>
                     <div className='col-span-1'>translation</div>
                     <div className='col-span-3'>
-                      "{translation.sourceText}" → "{translation.translatedText}" (mode: {translation.translationMode}, page: {translation.page || "-"}, pdf: {translation.docName || "-"}, undesired: {translation.isUndesired ? "yes" : "no"})
+                      "{translation.sourceText}" → "{translation.translatedText}" {selectedSessionOutputMode === "off"
+                        ? `(page: ${translation.page || "-"}, pdf: ${translation.docName || "-"})`
+                        : `(mode: ${translation.translationMode}, page: ${translation.page || "-"}, pdf: ${translation.docName || "-"}, undesired: ${translation.isUndesired ? "yes" : "no"})`}
                     </div>
                   </div>
                 );

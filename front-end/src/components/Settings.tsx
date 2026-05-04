@@ -19,6 +19,7 @@ const Settings: FC = () => {
         language,
         baseGazeSamples = 60,
         translationMode = "word",
+        translationOutputMode = "on",
         showBoxes = false,
         hoverTranslateDebug = false,
         showGazeCursor = false,
@@ -262,6 +263,40 @@ const Settings: FC = () => {
                     >
                         <option value='word'>Word</option>
                         <option value='sentence'>Sentence</option>
+                    </select>
+                </div>
+
+                {/* Translation output mode */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Translation output
+                    </label>
+                    <select
+                        value={translationOutputMode}
+                        style={
+                            isDarkTheme
+                                ? {
+                                    backgroundColor: dark_secondary,
+                                    color: light_secondary,
+                                }
+                                : {
+                                    backgroundColor: light_primary,
+                                    color: dark_primary,
+                                }
+                        }
+                        className='text-base p-1 w-48 rounded border border-gray-300'
+                        onChange={(e) =>
+                            handleSettingsChange(
+                                "translationOutputMode",
+                                e.target.value as IUserSettings["translationOutputMode"]
+                            )
+                        }
+                    >
+                        <option value='on'>Popup on</option>
+                        <option value='off'>Translation off (logging only)</option>
                     </select>
                 </div>
 

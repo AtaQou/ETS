@@ -97,6 +97,7 @@ export interface IUserSettings {
     language: string;
     baseGazeSamples: number;
     translationMode: "word" | "sentence";
+    translationOutputMode?: "on" | "off";
     showBoxes?: boolean; // νέο, optional για να μην σπάσει παλιό state
     hoverTranslateDebug?: boolean;
     showGazeCursor?: boolean;

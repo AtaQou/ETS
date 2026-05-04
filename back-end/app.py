@@ -64,6 +64,7 @@ def ensure_settings_schema():
         CREATE TABLE IF NOT EXISTS user_settings
         ([userID] INTEGER, [Selected_language] TEXT, [theme] TEXT, [zoomLevel] INTEGER,
          [baseGazeSamples] INTEGER DEFAULT 60, [translationMode] TEXT DEFAULT 'word',
+         [translationOutputMode] TEXT DEFAULT 'on',
          FOREIGN KEY(userID) REFERENCES users(userID))
     ''')
     cursor.execute("PRAGMA table_info(user_settings)")
@@ -76,6 +77,11 @@ def ensure_settings_schema():
     if 'translationMode' not in existing_columns:
         cursor.execute(
             "ALTER TABLE user_settings ADD COLUMN translationMode TEXT DEFAULT 'word'"
+        )
+        conn.commit()
+    if 'translationOutputMode' not in existing_columns:
+        cursor.execute(
+            "ALTER TABLE user_settings ADD COLUMN translationOutputMode TEXT DEFAULT 'on'"
         )
         conn.commit()
     conn.close()
@@ -96,6 +102,7 @@ def ensure_experiment_schema():
          [docID] INTEGER, [docName] TEXT, [page] INTEGER, [sourceText] TEXT NOT NULL, [translatedText] TEXT NOT NULL,
          [sourceLang] TEXT DEFAULT 'en', [targetLang] TEXT NOT NULL, [translationMode] TEXT DEFAULT 'word',
          [provider] TEXT DEFAULT 'google', [translatedAt] DATETIME NOT NULL, [settingsSnapshot] TEXT,
+         [translationOutputMode] TEXT DEFAULT 'on',
          [isUndesired] INTEGER NOT NULL DEFAULT 0,
          FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
     ''')
@@ -106,6 +113,9 @@ def ensure_experiment_schema():
         conn.commit()
     if 'isUndesired' not in translation_columns:
         cursor.execute("ALTER TABLE translation_events ADD COLUMN isUndesired INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+    if 'translationOutputMode' not in translation_columns:
+        cursor.execute("ALTER TABLE translation_events ADD COLUMN translationOutputMode TEXT DEFAULT 'on'")
         conn.commit()
     cursor.execute(
         """
@@ -119,6 +129,13 @@ def ensure_experiment_schema():
         )
         WHERE (docName IS NULL OR TRIM(docName) = '')
           AND docID IS NOT NULL
+        """
+    )
+    cursor.execute(
+        """
+        UPDATE translation_events
+        SET translationOutputMode = 'on'
+        WHERE translationOutputMode IS NULL OR TRIM(translationOutputMode) = ''
         """
     )
     cursor.execute('''
@@ -200,6 +217,7 @@ def _settings_row_to_dict(row):
         "zoomLevel": row[3],
         "baseGazeSamples": row[4] if row[4] is not None else 60,
         "translationMode": row[5] if row[5] else "word",
+        "translationOutputMode": row[6] if len(row) > 6 and row[6] else "on",
     }
 
 
@@ -216,7 +234,7 @@ def _get_active_session_id(cursor, user_id):
 
 def _get_db_settings(cursor, user_id):
     cursor.execute(
-        "SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode FROM user_settings WHERE userID = ?",
+        "SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translationOutputMode FROM user_settings WHERE userID = ?",
         (user_id,)
     )
     return _settings_row_to_dict(cursor.fetchone())
@@ -872,6 +890,11 @@ def log_translation_event():
     translation_mode = (data.get('translationMode') or 'word').strip().lower()
     if translation_mode not in ('word', 'sentence'):
         translation_mode = 'word'
+    translation_output_mode = (data.get('translationOutputMode') or 'on').strip().lower()
+    if translation_output_mode not in ('on', 'off'):
+        translation_output_mode = 'on'
+    if translation_output_mode == 'off':
+        translation_mode = 'word'
     provider = data.get('provider', 'google')
     doc_id = data.get('docID')
     doc_name = (data.get('docName') or '').strip()
@@ -879,6 +902,8 @@ def log_translation_event():
     translated_at = data.get('translatedAt') or _now_iso()
     settings_snapshot = data.get('settings')
     is_undesired = 1 if data.get('isUndesired') else 0
+    if translation_output_mode == 'off':
+        is_undesired = 0
 
     if not user_id:
         return jsonify({'message': 'userID is required.'}), 400
@@ -924,11 +949,11 @@ def log_translation_event():
         cursor.execute(
             """INSERT INTO translation_events(
                 userID, sessionID, docID, docName, page, sourceText, translatedText,
-                sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot, isUndesired
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot, translationOutputMode, isUndesired
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 user_id, session_id, doc_id, doc_name or None, page, source_text, translated_text,
-                source_lang, target_lang, translation_mode, provider, translated_at, _to_json(settings_snapshot), is_undesired
+                source_lang, target_lang, translation_mode, provider, translated_at, _to_json(settings_snapshot), translation_output_mode, is_undesired
             )
         )
         event_id = cursor.lastrowid
@@ -1026,6 +1051,7 @@ def get_vocabulary():
                 LEFT JOIN documents d
                     ON d.docID = e.docID AND d.userID = e.userID
                 WHERE e.userID = ?
+                  AND COALESCE(e.translationOutputMode, 'on') = 'on'
                   AND COALESCE(e.isUndesired, 0) = 0
                   AND (? = '' OR COALESCE(NULLIF(TRIM(e.docName), ''), d.docName, '') = ?)
             ),
@@ -1069,6 +1095,7 @@ def get_vocabulary():
             LEFT JOIN documents d
                 ON d.docID = e.docID AND d.userID = e.userID
             WHERE e.userID = ?
+              AND COALESCE(e.translationOutputMode, 'on') = 'on'
               AND COALESCE(e.isUndesired, 0) = 0
               AND COALESCE(NULLIF(TRIM(e.docName), ''), d.docName, '') <> ''
             ORDER BY docName ASC
@@ -1223,6 +1250,7 @@ def get_experiment_translations():
         query = """
             SELECT eventID, userID, sessionID, docID, docName, page, sourceText, translatedText,
                    sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot
+                   , COALESCE(translationOutputMode, 'on') AS translationOutputMode
                    , COALESCE(isUndesired, 0) AS isUndesired
             FROM translation_events
             WHERE 1 = 1
@@ -1320,6 +1348,7 @@ def export_experiment_data():
                 s.startedAt AS sessionStartedAt, s.endedAt AS sessionEndedAt,
                 e.docID, e.docName, e.page, e.sourceText, e.translatedText,
                 e.sourceLang, e.targetLang, e.translationMode, e.provider, e.translatedAt,
+                COALESCE(e.translationOutputMode, 'on') AS translationOutputMode,
                 COALESCE(e.isUndesired, 0) AS isUndesired
             FROM translation_events e
             LEFT JOIN users u ON u.userID = e.userID
@@ -1348,7 +1377,7 @@ def export_experiment_data():
     writer.writerow([
         "eventID", "userID", "username", "sessionID", "sessionStartedAt",
         "sessionEndedAt", "docID", "docName", "page", "sourceText", "translatedText",
-        "sourceLang", "targetLang", "translationMode", "provider", "translatedAt", "isUndesired"
+        "sourceLang", "targetLang", "translationMode", "provider", "translatedAt", "translationOutputMode", "isUndesired"
     ])
     for row in rows:
         writer.writerow(row)
@@ -1450,13 +1479,16 @@ def update_settings():
         baseGazeSamples = 60
     baseGazeSamples = max(1, min(1200, baseGazeSamples))
     translationMode = data.get('translationMode', 'word')
+    translation_output_mode = (data.get('translationOutputMode') or 'on').strip().lower()
+    if translation_output_mode not in ('on', 'off'):
+        translation_output_mode = 'on'
     sessionID = data.get('sessionID')
 
     conn = sqlite3.connect(sqLiteDatabase)
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode FROM user_settings WHERE userID = ?",
+        "SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translationOutputMode FROM user_settings WHERE userID = ?",
         (userID,)
     )
     user_settings_row = cursor.fetchone()
@@ -1468,6 +1500,7 @@ def update_settings():
         "zoomLevel": zoomLevel,
         "baseGazeSamples": baseGazeSamples,
         "translationMode": translationMode,
+        "translationOutputMode": translation_output_mode,
     }
     changed_fields = []
     if old_settings is None:
@@ -1479,11 +1512,11 @@ def update_settings():
         ]
 
     if user_settings_row:
-        cursor.execute("UPDATE user_settings SET Selected_language = ?, theme = ?, zoomLevel = ?, baseGazeSamples = ?, translationMode = ? WHERE userID = ?",
-                       (selected_language, theme, zoomLevel, baseGazeSamples, translationMode, userID))
+        cursor.execute("UPDATE user_settings SET Selected_language = ?, theme = ?, zoomLevel = ?, baseGazeSamples = ?, translationMode = ?, translationOutputMode = ? WHERE userID = ?",
+                       (selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translation_output_mode, userID))
     else:
-        cursor.execute("INSERT INTO user_settings (userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode) VALUES (?, ?, ?, ?, ?, ?)",
-                       (userID, selected_language, theme, zoomLevel, baseGazeSamples, translationMode))
+        cursor.execute("INSERT INTO user_settings (userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translationOutputMode) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                       (userID, selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translation_output_mode))
 
     if changed_fields:
         if not sessionID:
@@ -1512,7 +1545,7 @@ def get_user_settings():
     conn = sqlite3.connect(sqLiteDatabase)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode FROM user_settings WHERE userID = ?", (userID,))
+    cursor.execute("SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translationOutputMode FROM user_settings WHERE userID = ?", (userID,))
     user_settings = cursor.fetchone()
 
     if not user_settings:
@@ -1526,6 +1559,7 @@ def get_user_settings():
         "zoomLevel": user_settings["zoomLevel"],
         "baseGazeSamples": user_settings["baseGazeSamples"] if user_settings["baseGazeSamples"] is not None else 60,
         "translationMode": user_settings["translationMode"] if user_settings["translationMode"] else "word",
+        "translationOutputMode": user_settings["translationOutputMode"] if user_settings["translationOutputMode"] else "on",
     }
 
     return jsonify(settings), 200
