@@ -38,7 +38,7 @@ const Settings: FC = () => {
             newValue = (value as IUserSettings["zoom"]) / 100;
         }
         if (key === "baseGazeSamples") {
-            newValue = Math.max(1, Math.round(value as number));
+            newValue = Math.max(1, Math.min(1200, Math.round(value as number)));
         }
         if (key === "gazeYOffsetPx") {
             newValue = Math.max(0, Math.min(100, Math.round(value as number)));
@@ -140,7 +140,7 @@ const Settings: FC = () => {
                         <input
                             type='range'
                             min='1'
-                            max='600'
+                            max='1200'
                             value={baseGazeSamples}
                             onChange={(e) =>
                                 handleSettingsChange(
@@ -153,12 +153,12 @@ const Settings: FC = () => {
                         <input
                             type='number'
                             min={1}
-                            max={600}
+                            max={1200}
                             value={baseGazeSamples}
                             onChange={(e) => {
                                 const raw = Number(e.target.value);
                                 if (Number.isNaN(raw)) return;
-                                const clamped = Math.max(1, Math.min(600, raw));
+                                const clamped = Math.max(1, Math.min(1200, raw));
                                 handleSettingsChange("baseGazeSamples", clamped);
                             }}
                             className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'

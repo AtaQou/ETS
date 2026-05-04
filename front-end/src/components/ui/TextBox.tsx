@@ -50,6 +50,7 @@ const TextBox = () => {
   const [wordsScreenPositions, setWordsScreenPositions] =
     useState<IScaledWordCoords[]>();
   const [translation, setTranslation] = useState<string>("");
+  const [activeTranslationEventID, setActiveTranslationEventID] = useState<number | null>(null);
   const [coolDown, setCoolDown] = useState<boolean>(false);
   const lastDetectionRunAtRef = useRef<number>(0);
 
@@ -215,6 +216,7 @@ const TextBox = () => {
 
     const fetchTranslation = async () => {
       setTranslation("");
+      setActiveTranslationEventID(null);
       if (currentWord && shouldTranslate) {
         const isSentenceMode = userSettingsUi.translationMode === "sentence";
         const sourceWord = currentWord.word;
@@ -260,29 +262,41 @@ const TextBox = () => {
             const translatedText = data?.translation || "";
             setTranslation(translatedText || "");
             if (translatedText && userInfo.userID && userInfo.sessionID) {
-              fetch(`${apiURL}/log-translation`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Accept: "application/json",
-                },
-                body: JSON.stringify({
-                  userID: userInfo.userID,
-                  sessionID: userInfo.sessionID,
-                  docID: selectedDocID,
-                  page: currentPage,
-                  sourceText: textToTranslate,
-                  translatedText,
-                  sourceLang: "en",
-                  targetLang: targetLanguage,
-                  translationMode: userSettingsUi.translationMode,
-                  provider: data?.provider || "deepl",
-                  translatedAt: new Date().toISOString(),
-                  settings: userSettingsUi,
-                }),
-              }).catch((logError) => {
+              try {
+                const logResponse = await fetch(`${apiURL}/log-translation`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                  },
+                  body: JSON.stringify({
+                    userID: userInfo.userID,
+                    sessionID: userInfo.sessionID,
+                    docID: selectedDocID,
+                    page: currentPage,
+                    sourceText: textToTranslate,
+                    translatedText,
+                    sourceLang: "en",
+                    targetLang: targetLanguage,
+                    translationMode: userSettingsUi.translationMode,
+                    provider: data?.provider || "deepl",
+                    translatedAt: new Date().toISOString(),
+                    settings: userSettingsUi,
+                    isUndesired: false,
+                  }),
+                });
+                if (logResponse.ok) {
+                  const logData = await logResponse.json();
+                  setActiveTranslationEventID(
+                    typeof logData?.eventID === "number" ? logData.eventID : null
+                  );
+                } else {
+                  setActiveTranslationEventID(null);
+                }
+              } catch (logError) {
                 console.error("Failed to log translation event:", logError);
-              });
+                setActiveTranslationEventID(null);
+              }
             }
           } else {
             const errorData = await response.json().catch(() => ({}));
@@ -304,6 +318,36 @@ const TextBox = () => {
     userSettingsUi,
     userSettingsUi.translationMode,
   ]);
+
+  const handleMarkUndesiredTranslation = async () => {
+    if (!activeTranslationEventID || !userInfo.userID) {
+      return;
+    }
+    try {
+      const response = await fetch(`${apiURL}/translation-feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          eventID: activeTranslationEventID,
+          userID: userInfo.userID,
+          isUndesired: true,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Failed to mark translation as undesired:", errorData);
+        return;
+      }
+      setActiveTranslationEventID(null);
+      setTranslation("");
+      setShouldTranslate?.(false);
+    } catch (error) {
+      console.error("Failed to mark translation as undesired:", error);
+    }
+  };
 
   useEffect(() => {
     if (
@@ -377,6 +421,8 @@ const TextBox = () => {
               translation={translation}
               offset={(currentWord?.wordCoords.width || 0) + wordPadding}
               setShouldTranslate={setShouldTranslate}
+              onMarkUndesired={handleMarkUndesiredTranslation}
+              showUndesiredButton={!!activeTranslationEventID}
             />
           )}
         </div>

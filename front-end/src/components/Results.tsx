@@ -41,6 +41,7 @@ interface ITranslationEvent {
   provider: string;
   translatedAt: string;
   settingsSnapshot?: Record<string, any> | string | null;
+  isUndesired?: number;
 }
 
 interface ISettingsChangeEvent {
@@ -363,7 +364,7 @@ const Results: FC = () => {
                     <div className='col-span-2'>{formatDate(item.timestamp)}</div>
                     <div className='col-span-1'>translation</div>
                     <div className='col-span-3'>
-                      "{translation.sourceText}" → "{translation.translatedText}" (mode: {translation.translationMode}, page: {translation.page || "-"}, pdf: {translation.docName || "-"})
+                      "{translation.sourceText}" → "{translation.translatedText}" (mode: {translation.translationMode}, page: {translation.page || "-"}, pdf: {translation.docName || "-"}, undesired: {translation.isUndesired ? "yes" : "no"})
                     </div>
                   </div>
                 );

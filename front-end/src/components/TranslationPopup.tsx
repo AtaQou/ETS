@@ -1,7 +1,7 @@
 import Button from "components/ui/Button";
 import { Context } from "context/Context";
-import React, { useContext, useState, useEffect } from "react";
-import { RiCloseFill } from "react-icons/ri";
+import React, { useContext, useEffect } from "react";
+import { RiCloseFill, RiEyeOffLine } from "react-icons/ri";
 import { IContextProps } from "types/AppTypes";
 import {
   getBgPrimary,
@@ -13,12 +13,16 @@ interface TranslationPopupProps {
   offset: number;
   translation: string;
   setShouldTranslate?: (payload: boolean) => void;
+  onMarkUndesired?: () => void;
+  showUndesiredButton?: boolean;
 }
 
 const TranslationPopup: React.FC<TranslationPopupProps> = ({
   offset,
   translation,
   setShouldTranslate,
+  onMarkUndesired,
+  showUndesiredButton = false,
 }) => {
   const { userSettingsApi } = useContext<IContextProps>(Context);
   const left = offset - 40;
@@ -64,6 +68,15 @@ const TranslationPopup: React.FC<TranslationPopupProps> = ({
         <Button className='absolute right-0 top-0' onClick={onClose}>
           <RiCloseFill className='text-xl' />
         </Button>
+        {showUndesiredButton && (
+          <Button
+            className='absolute right-6 top-0 p-0.5'
+            onClick={onMarkUndesired}
+            title='Mark translation as undesired'
+          >
+            <RiEyeOffLine className='text-sm opacity-80 hover:opacity-100' />
+          </Button>
+        )}
         <div
           className='text-sm pl-3 py-1 pr-8 whitespace-nowrap'
           id='translation'

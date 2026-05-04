@@ -96,12 +96,16 @@ def ensure_experiment_schema():
          [docID] INTEGER, [docName] TEXT, [page] INTEGER, [sourceText] TEXT NOT NULL, [translatedText] TEXT NOT NULL,
          [sourceLang] TEXT DEFAULT 'en', [targetLang] TEXT NOT NULL, [translationMode] TEXT DEFAULT 'word',
          [provider] TEXT DEFAULT 'google', [translatedAt] DATETIME NOT NULL, [settingsSnapshot] TEXT,
+         [isUndesired] INTEGER NOT NULL DEFAULT 0,
          FOREIGN KEY(userID) REFERENCES users(userID), FOREIGN KEY(sessionID) REFERENCES user_sessions(sessionID))
     ''')
     cursor.execute("PRAGMA table_info(translation_events)")
     translation_columns = {row[1] for row in cursor.fetchall()}
     if 'docName' not in translation_columns:
         cursor.execute("ALTER TABLE translation_events ADD COLUMN docName TEXT")
+        conn.commit()
+    if 'isUndesired' not in translation_columns:
+        cursor.execute("ALTER TABLE translation_events ADD COLUMN isUndesired INTEGER NOT NULL DEFAULT 0")
         conn.commit()
     cursor.execute(
         """
@@ -874,6 +878,7 @@ def log_translation_event():
     page = data.get('page')
     translated_at = data.get('translatedAt') or _now_iso()
     settings_snapshot = data.get('settings')
+    is_undesired = 1 if data.get('isUndesired') else 0
 
     if not user_id:
         return jsonify({'message': 'userID is required.'}), 400
@@ -919,13 +924,14 @@ def log_translation_event():
         cursor.execute(
             """INSERT INTO translation_events(
                 userID, sessionID, docID, docName, page, sourceText, translatedText,
-                sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot, isUndesired
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 user_id, session_id, doc_id, doc_name or None, page, source_text, translated_text,
-                source_lang, target_lang, translation_mode, provider, translated_at, _to_json(settings_snapshot)
+                source_lang, target_lang, translation_mode, provider, translated_at, _to_json(settings_snapshot), is_undesired
             )
         )
+        event_id = cursor.lastrowid
 
         cursor.execute(
             """INSERT INTO translation_stats(
@@ -947,7 +953,40 @@ def log_translation_event():
     finally:
         conn.close()
 
-    return jsonify({'message': 'Translation event logged.'}), 200
+    return jsonify({'message': 'Translation event logged.', 'eventID': event_id}), 200
+
+
+@app.route('/api/translation-feedback', methods=['POST'])
+def update_translation_feedback():
+    data = request.get_json() or {}
+    event_id = _to_int(data.get('eventID'))
+    user_id = _to_int(data.get('userID'))
+    is_undesired = 1 if data.get('isUndesired') else 0
+
+    if event_id is None:
+        return jsonify({'message': 'eventID is required.'}), 400
+    if user_id is None:
+        return jsonify({'message': 'userID is required.'}), 400
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            "UPDATE translation_events SET isUndesired = ? WHERE eventID = ? AND userID = ?",
+            (is_undesired, event_id, user_id)
+        )
+        if cursor.rowcount == 0:
+            return jsonify({'message': 'Translation event not found.'}), 404
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to update translation feedback.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify({'message': 'Translation feedback saved.'}), 200
 
 
 @app.route('/api/vocabulary', methods=['GET'])
@@ -987,6 +1026,7 @@ def get_vocabulary():
                 LEFT JOIN documents d
                     ON d.docID = e.docID AND d.userID = e.userID
                 WHERE e.userID = ?
+                  AND COALESCE(e.isUndesired, 0) = 0
                   AND (? = '' OR COALESCE(NULLIF(TRIM(e.docName), ''), d.docName, '') = ?)
             ),
             ranked AS (
@@ -1029,6 +1069,7 @@ def get_vocabulary():
             LEFT JOIN documents d
                 ON d.docID = e.docID AND d.userID = e.userID
             WHERE e.userID = ?
+              AND COALESCE(e.isUndesired, 0) = 0
               AND COALESCE(NULLIF(TRIM(e.docName), ''), d.docName, '') <> ''
             ORDER BY docName ASC
             """,
@@ -1182,6 +1223,7 @@ def get_experiment_translations():
         query = """
             SELECT eventID, userID, sessionID, docID, docName, page, sourceText, translatedText,
                    sourceLang, targetLang, translationMode, provider, translatedAt, settingsSnapshot
+                   , COALESCE(isUndesired, 0) AS isUndesired
             FROM translation_events
             WHERE 1 = 1
         """
@@ -1277,7 +1319,8 @@ def export_experiment_data():
                 e.eventID, e.userID, u.username, e.sessionID,
                 s.startedAt AS sessionStartedAt, s.endedAt AS sessionEndedAt,
                 e.docID, e.docName, e.page, e.sourceText, e.translatedText,
-                e.sourceLang, e.targetLang, e.translationMode, e.provider, e.translatedAt
+                e.sourceLang, e.targetLang, e.translationMode, e.provider, e.translatedAt,
+                COALESCE(e.isUndesired, 0) AS isUndesired
             FROM translation_events e
             LEFT JOIN users u ON u.userID = e.userID
             LEFT JOIN user_sessions s ON s.sessionID = e.sessionID
@@ -1305,7 +1348,7 @@ def export_experiment_data():
     writer.writerow([
         "eventID", "userID", "username", "sessionID", "sessionStartedAt",
         "sessionEndedAt", "docID", "docName", "page", "sourceText", "translatedText",
-        "sourceLang", "targetLang", "translationMode", "provider", "translatedAt"
+        "sourceLang", "targetLang", "translationMode", "provider", "translatedAt", "isUndesired"
     ])
     for row in rows:
         writer.writerow(row)
@@ -1402,7 +1445,10 @@ def update_settings():
     selected_language = data['language']
     theme = data['theme']
     zoomLevel = data['zoomLevel']
-    baseGazeSamples = data.get('baseGazeSamples', 60)
+    baseGazeSamples = _to_int(data.get('baseGazeSamples', 60))
+    if baseGazeSamples is None:
+        baseGazeSamples = 60
+    baseGazeSamples = max(1, min(1200, baseGazeSamples))
     translationMode = data.get('translationMode', 'word')
     sessionID = data.get('sessionID')
 
