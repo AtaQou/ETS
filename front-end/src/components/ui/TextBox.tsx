@@ -423,7 +423,6 @@ const TextBox = () => {
             <TranslationPopup
               translation={translation}
               offset={(currentWord?.wordCoords.width || 0) + wordPadding}
-              setShouldTranslate={setShouldTranslate}
               onMarkUndesired={handleMarkUndesiredTranslation}
               showUndesiredButton={!!activeTranslationEventID}
             />
