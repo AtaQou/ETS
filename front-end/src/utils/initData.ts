@@ -22,7 +22,9 @@ export const initSettings: IUserSettings = {
     hoverTranslateDebug: false,
     showGazeCursor: false,
     gazeDetectionMode: "circle",
+    gazeMappingMode: "auto",
     gazeYOffsetPx: 8,
+    gazeXOffsetPx: 0,
     gazeHitRadiusPx: 20,
 };
 

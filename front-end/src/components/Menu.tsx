@@ -45,7 +45,9 @@ function Menu({ onCloseMenu }: MenuProps) {
     hoverTranslateDebug,
     showGazeCursor,
     gazeDetectionMode,
+    gazeMappingMode,
     gazeYOffsetPx,
+    gazeXOffsetPx,
     gazeHitRadiusPx,
   } = userSettingsUi;
   const { userID, sessionID } = userInfo;
@@ -124,7 +126,9 @@ function Menu({ onCloseMenu }: MenuProps) {
           hoverTranslateDebug,
           showGazeCursor,
           gazeDetectionMode,
+          gazeMappingMode,
           gazeYOffsetPx,
+          gazeXOffsetPx,
           gazeHitRadiusPx,
         };
         const outputModeChanged =

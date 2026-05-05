@@ -68,28 +68,71 @@ const getViewportResolution = () => {
   return [Math.max(1, Math.round(width)), Math.max(1, Math.round(height))];
 };
 
+type GazeMappingMode = "auto" | "viewport" | "screenAdjusted";
+
+const normalizeGazeMappingMode = (value: unknown): GazeMappingMode => {
+  const raw = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  if (raw === "viewport") return "viewport";
+  if (
+    raw === "screenadjusted" ||
+    raw === "screen_adjusted" ||
+    raw === "screen-adjusted"
+  ) {
+    return "screenAdjusted";
+  }
+  return "auto";
+};
+
 const clampGazeYOffsetPx = (value: number) =>
   Math.max(0, Math.min(100, Math.round(value)));
+const clampGazeXOffsetPx = (value: number) =>
+  Math.max(-1200, Math.min(1200, Math.round(value)));
 
-const readInitialGazeYOffsetPx = () => {
-  if (typeof window === "undefined") return 8;
+const readInitialUserSettings = () => {
+  if (typeof window === "undefined") return null;
   try {
     const rawSettings = window.localStorage.getItem("userSettingsUi");
-    if (!rawSettings) return 8;
-    const parsed = JSON.parse(rawSettings);
-    return clampGazeYOffsetPx(Number(parsed?.gazeYOffsetPx ?? 8));
+    if (!rawSettings) return null;
+    return JSON.parse(rawSettings);
   } catch (error) {
-    return 8;
+    return null;
   }
 };
 
+const readInitialGazeYOffsetPx = () => {
+  const parsed = readInitialUserSettings();
+  return clampGazeYOffsetPx(Number(parsed?.gazeYOffsetPx ?? 8));
+};
+
+const readInitialGazeXOffsetPx = () => {
+  const parsed = readInitialUserSettings();
+  return clampGazeXOffsetPx(Number(parsed?.gazeXOffsetPx ?? 0));
+};
+
+const readInitialGazeMappingMode = (): GazeMappingMode => {
+  const parsed = readInitialUserSettings();
+  return normalizeGazeMappingMode(parsed?.gazeMappingMode ?? "auto");
+};
+
 let gazeYOffsetPx = readInitialGazeYOffsetPx();
+let gazeXOffsetPx = readInitialGazeXOffsetPx();
+let gazeMappingMode: GazeMappingMode = readInitialGazeMappingMode();
 
 export const setGazeYOffsetPx = (value: number) => {
   gazeYOffsetPx = clampGazeYOffsetPx(value);
 };
 
 export const getGazeYOffsetPx = () => gazeYOffsetPx;
+export const setGazeXOffsetPx = (value: number) => {
+  gazeXOffsetPx = clampGazeXOffsetPx(value);
+};
+export const getGazeXOffsetPx = () => gazeXOffsetPx;
+export const setGazeMappingMode = (value: string) => {
+  gazeMappingMode = normalizeGazeMappingMode(value);
+};
+export const getGazeMappingMode = () => gazeMappingMode;
 
 const getScreenResolution = () => {
   const width = window.screen.width || window.innerWidth || 1;
@@ -124,26 +167,83 @@ const getViewportOffsetOnScreen = () => {
   };
 };
 
+const getViewportOverflowDistance = (
+  x: number,
+  y: number,
+  viewportWidth: number,
+  viewportHeight: number
+) => {
+  const overflowLeft = Math.max(0, -x);
+  const overflowTop = Math.max(0, -y);
+  const overflowRight = Math.max(0, x - (viewportWidth - 1));
+  const overflowBottom = Math.max(0, y - (viewportHeight - 1));
+  return overflowLeft + overflowTop + overflowRight + overflowBottom;
+};
+
 const createGazePointMapper = () => {
+  const [viewportWidth, viewportHeight] = getViewportResolution();
   const [screenWidth, screenHeight] = getScreenResolution();
-  const { viewportLeftOnScreen, viewportTopOnScreen } =
-    getViewportOffsetOnScreen();
+  const viewportOffset = getViewportOffsetOnScreen();
 
   return (normalizedX: number, normalizedY: number) => {
+    const viewportRaw = {
+      x: normalizedX * viewportWidth + gazeXOffsetPx,
+      y: normalizedY * viewportHeight + gazeYOffsetPx,
+    };
+
     const absoluteScreenX = normalizedX * screenWidth;
     const absoluteScreenY = normalizedY * screenHeight;
+    const screenAdjustedRaw = {
+      x: absoluteScreenX - viewportOffset.viewportLeftOnScreen + gazeXOffsetPx,
+      y: absoluteScreenY - viewportOffset.viewportTopOnScreen + gazeYOffsetPx,
+    };
+
+    let selectedRaw = viewportRaw;
+
+    if (gazeMappingMode === "screenAdjusted") {
+      selectedRaw = screenAdjustedRaw;
+    } else if (gazeMappingMode === "auto") {
+      const viewportOverflow = getViewportOverflowDistance(
+        viewportRaw.x,
+        viewportRaw.y,
+        viewportWidth,
+        viewportHeight
+      );
+      const screenAdjustedOverflow = getViewportOverflowDistance(
+        screenAdjustedRaw.x,
+        screenAdjustedRaw.y,
+        viewportWidth,
+        viewportHeight
+      );
+
+      // Prefer the mapping that naturally falls inside the viewport.
+      if (screenAdjustedOverflow < viewportOverflow) {
+        selectedRaw = screenAdjustedRaw;
+      }
+    }
+
     return clampToViewport(
-      absoluteScreenX - viewportLeftOnScreen,
-      absoluteScreenY - viewportTopOnScreen + gazeYOffsetPx
+      selectedRaw.x,
+      selectedRaw.y,
+      viewportWidth,
+      viewportHeight
     );
   };
 };
 
-const clampToViewport = (x: number, y: number) => {
-  const [viewportWidth, viewportHeight] = getViewportResolution();
+const clampToViewport = (
+  x: number,
+  y: number,
+  viewportWidth?: number,
+  viewportHeight?: number
+) => {
+  const [resolvedWidth, resolvedHeight] =
+    viewportWidth && viewportHeight
+      ? [viewportWidth, viewportHeight]
+      : getViewportResolution();
   return {
-    pointX: Math.min(Math.max(0, Math.round(x)), viewportWidth - 1),
-    pointY: Math.min(Math.max(0, Math.round(y)), viewportHeight - 1),
+    pointX: Math.min(Math.max(0, Math.round(x)), resolvedWidth - 1),
+    pointY: Math.min(Math.max(0, Math.round(y)), resolvedHeight - 1),
   };
 };
 

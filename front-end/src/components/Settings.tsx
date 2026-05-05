@@ -24,7 +24,9 @@ const Settings: FC = () => {
         hoverTranslateDebug = false,
         showGazeCursor = false,
         gazeDetectionMode = "circle",
+        gazeMappingMode = "auto",
         gazeYOffsetPx = 8,
+        gazeXOffsetPx = 0,
         gazeHitRadiusPx = 20,
     } = userSettingsUi;
     const [loading, setLoading] = useState(false);
@@ -43,6 +45,9 @@ const Settings: FC = () => {
         }
         if (key === "gazeYOffsetPx") {
             newValue = Math.max(0, Math.min(100, Math.round(value as number)));
+        }
+        if (key === "gazeXOffsetPx") {
+            newValue = Math.max(-1200, Math.min(1200, Math.round(value as number)));
         }
         if (key === "gazeHitRadiusPx") {
             newValue = Math.max(0, Math.min(100, Math.round(value as number)));
@@ -388,6 +393,41 @@ const Settings: FC = () => {
                     </select>
                 </div>
 
+                {/* Gaze mapping mode */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Gaze mapping mode
+                    </label>
+                    <select
+                        value={gazeMappingMode}
+                        style={
+                            isDarkTheme
+                                ? {
+                                    backgroundColor: dark_secondary,
+                                    color: light_secondary,
+                                }
+                                : {
+                                    backgroundColor: light_primary,
+                                    color: dark_primary,
+                                }
+                        }
+                        className='text-base p-1 w-48 rounded border border-gray-300'
+                        onChange={(e) =>
+                            handleSettingsChange(
+                                "gazeMappingMode",
+                                e.target.value as IUserSettings["gazeMappingMode"]
+                            )
+                        }
+                    >
+                        <option value='auto'>Auto</option>
+                        <option value='viewport'>Viewport</option>
+                        <option value='screenAdjusted'>Screen adjusted (legacy)</option>
+                    </select>
+                </div>
+
                 {/* Gaze Y offset */}
                 <div className='mb-4 flex justify-between'>
                     <label
@@ -420,6 +460,45 @@ const Settings: FC = () => {
                                 if (Number.isNaN(raw)) return;
                                 const clamped = Math.max(0, Math.min(100, raw));
                                 handleSettingsChange("gazeYOffsetPx", clamped);
+                            }}
+                            className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
+                        />
+                        <span className='ml-2 text-base'>px</span>
+                    </div>
+                </div>
+
+                {/* Gaze X offset */}
+                <div className='mb-4 flex justify-between'>
+                    <label
+                        className='text-base'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        Gaze X offset
+                    </label>
+                    <div
+                        className='flex items-center'
+                        style={{ color: getFontColorSecondary(isDarkTheme) }}
+                    >
+                        <input
+                            type='range'
+                            min='-1200'
+                            max='1200'
+                            value={gazeXOffsetPx}
+                            onChange={(e) =>
+                                handleSettingsChange("gazeXOffsetPx", Number(e.target.value))
+                            }
+                            className='slider text-gray-900 p-1 h-10 rounded border border-gray-300'
+                        />
+                        <input
+                            type='number'
+                            min={-1200}
+                            max={1200}
+                            value={gazeXOffsetPx}
+                            onChange={(e) => {
+                                const raw = Number(e.target.value);
+                                if (Number.isNaN(raw)) return;
+                                const clamped = Math.max(-1200, Math.min(1200, raw));
+                                handleSettingsChange("gazeXOffsetPx", clamped);
                             }}
                             className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'
                         />

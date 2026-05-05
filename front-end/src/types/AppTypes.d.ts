@@ -102,7 +102,9 @@ export interface IUserSettings {
     hoverTranslateDebug?: boolean;
     showGazeCursor?: boolean;
     gazeDetectionMode?: "point" | "circle";
+    gazeMappingMode?: "auto" | "viewport" | "screenAdjusted";
     gazeYOffsetPx?: number;
+    gazeXOffsetPx?: number;
     gazeHitRadiusPx?: number;
 }
 
