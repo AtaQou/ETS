@@ -11,7 +11,7 @@ import { getFontColorSecondary } from "../utils/functions";
 import { IContextProps, IUserSettings } from "types/AppTypes";
 
 const Settings: FC = () => {
-    const { userSettingsUi, setUserSettingsUi, userSettingsApi } =
+    const { userSettingsUi, setUserSettingsUi, userSettingsApi, userInfo } =
         useContext<IContextProps>(Context);
     const {
         zoom,
@@ -44,7 +44,7 @@ const Settings: FC = () => {
             newValue = Math.max(1, Math.min(1200, Math.round(value as number)));
         }
         if (key === "gazeYOffsetPx") {
-            newValue = Math.max(0, Math.min(100, Math.round(value as number)));
+            newValue = Math.max(-200, Math.min(200, Math.round(value as number)));
         }
         if (key === "gazeXOffsetPx") {
             newValue = Math.max(-1200, Math.min(1200, Math.round(value as number)));
@@ -76,13 +76,19 @@ const Settings: FC = () => {
     }
 
     return (
-        <div className='flex flex-col m-2 p-4'>
+        <div className='relative flex flex-col m-2 p-4'>
             <h1
                 className='py-1 mb-4 text-xl font-bold text-gray-900 border-b border-gray-300'
                 style={{ color: getFontColorSecondary(isDarkTheme) }}
             >
                 Settings
             </h1>
+            <div
+                className='absolute right-8 top-6 text-xs opacity-70'
+                style={{ color: getFontColorSecondary(isDarkTheme) }}
+            >
+                User ID: {userInfo.userID || "-"}
+            </div>
             <div
                 className='mb-8 text-gray-600'
                 style={{ color: getFontColorSecondary(isDarkTheme) }}
@@ -442,8 +448,8 @@ const Settings: FC = () => {
                     >
                         <input
                             type='range'
-                            min='0'
-                            max='100'
+                            min='-200'
+                            max='200'
                             value={gazeYOffsetPx}
                             onChange={(e) =>
                                 handleSettingsChange("gazeYOffsetPx", Number(e.target.value))
@@ -452,13 +458,13 @@ const Settings: FC = () => {
                         />
                         <input
                             type='number'
-                            min={0}
-                            max={100}
+                            min={-200}
+                            max={200}
                             value={gazeYOffsetPx}
                             onChange={(e) => {
                                 const raw = Number(e.target.value);
                                 if (Number.isNaN(raw)) return;
-                                const clamped = Math.max(0, Math.min(100, raw));
+                                const clamped = Math.max(-200, Math.min(200, raw));
                                 handleSettingsChange("gazeYOffsetPx", clamped);
                             }}
                             className='ml-4 w-20 text-right text-gray-900 p-1 h-10 rounded border border-gray-300'

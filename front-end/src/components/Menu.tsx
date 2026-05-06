@@ -145,6 +145,11 @@ function Menu({ onCloseMenu }: MenuProps) {
             baseGazeSamples,
             translationMode,
             translationOutputMode,
+            gazeDetectionMode,
+            gazeMappingMode,
+            gazeYOffsetPx,
+            gazeXOffsetPx,
+            gazeHitRadiusPx,
           })
           .then(async (_res) => {
             if (outputModeChanged) {

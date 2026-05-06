@@ -86,7 +86,7 @@ const normalizeGazeMappingMode = (value: unknown): GazeMappingMode => {
 };
 
 const clampGazeYOffsetPx = (value: number) =>
-  Math.max(0, Math.min(100, Math.round(value)));
+  Math.max(-200, Math.min(200, Math.round(value)));
 const clampGazeXOffsetPx = (value: number) =>
   Math.max(-1200, Math.min(1200, Math.round(value)));
 

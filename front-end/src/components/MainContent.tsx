@@ -15,7 +15,14 @@ import Snackbar from "./ui/Snackbar";
 import { useWordPositions } from "hooks/useWordPositions";
 
 const MainContent: React.FC = () => {
-  const { file, loading, userSettingsApi, setUserSettingsApi, userInfo } =
+  const {
+    file,
+    loading,
+    userSettingsApi,
+    setUserSettingsApi,
+    setUserSettingsUi,
+    userInfo,
+  } =
     useContext<IContextProps>(Context);
   const { snackbarData } = useSnackbar();
   const { wordsLoading } = useWordPositions();
@@ -30,14 +37,21 @@ const MainContent: React.FC = () => {
           params: { userID },
         });
         const settings = response.data;
-        setUserSettingsApi?.({
+        const resolvedSettings = {
           zoom: settings.zoomLevel,
           theme: settings.theme,
           language: settings.selected_language,
           baseGazeSamples: settings.baseGazeSamples ?? 60,
           translationMode: settings.translationMode ?? "word",
           translationOutputMode: settings.translationOutputMode ?? "on",
-        });
+          gazeDetectionMode: settings.gazeDetectionMode ?? "circle",
+          gazeMappingMode: settings.gazeMappingMode ?? "auto",
+          gazeYOffsetPx: settings.gazeYOffsetPx ?? 8,
+          gazeXOffsetPx: settings.gazeXOffsetPx ?? 0,
+          gazeHitRadiusPx: settings.gazeHitRadiusPx ?? 20,
+        };
+        setUserSettingsApi?.(resolvedSettings);
+        setUserSettingsUi?.(resolvedSettings);
       } catch (err) {
       } finally {
       }
