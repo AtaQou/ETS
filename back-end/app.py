@@ -56,6 +56,24 @@ try:
 except ValueError:
     DEEPL_TRANSLATOR_TIMEOUT_SECONDS = 12
 
+DEFAULT_SETTINGS_LANGUAGE = "en"
+DEFAULT_SETTINGS_THEME = "dark"
+DEFAULT_SETTINGS_ZOOM = 0.84
+DEFAULT_BASE_GAZE_SAMPLES = 60
+DEFAULT_TRANSLATION_MODE = "word"
+DEFAULT_TRANSLATION_OUTPUT_MODE = "on"
+DEFAULT_GAZE_DETECTION_MODE = "circle"
+DEFAULT_GAZE_MAPPING_MODE = "auto"
+DEFAULT_GAZE_Y_OFFSET_PX = 8
+DEFAULT_GAZE_X_OFFSET_PX = 0
+DEFAULT_GAZE_HIT_RADIUS_PX = 20
+
+USER_SETTINGS_SELECT_COLUMNS = (
+    "userID, Selected_language, theme, zoomLevel, baseGazeSamples, "
+    "translationMode, translationOutputMode, gazeDetectionMode, gazeMappingMode, "
+    "gazeYOffsetPx, gazeXOffsetPx, gazeHitRadiusPx"
+)
+
 
 def ensure_settings_schema():
     conn = sqlite3.connect(sqLiteDatabase)
@@ -64,26 +82,59 @@ def ensure_settings_schema():
         CREATE TABLE IF NOT EXISTS user_settings
         ([userID] INTEGER, [Selected_language] TEXT, [theme] TEXT, [zoomLevel] INTEGER,
          [baseGazeSamples] INTEGER DEFAULT 60, [translationMode] TEXT DEFAULT 'word',
-         [translationOutputMode] TEXT DEFAULT 'on',
+         [translationOutputMode] TEXT DEFAULT 'on', [gazeDetectionMode] TEXT DEFAULT 'circle',
+         [gazeMappingMode] TEXT DEFAULT 'auto', [gazeYOffsetPx] INTEGER DEFAULT 8,
+         [gazeXOffsetPx] INTEGER DEFAULT 0, [gazeHitRadiusPx] INTEGER DEFAULT 20,
          FOREIGN KEY(userID) REFERENCES users(userID))
     ''')
     cursor.execute("PRAGMA table_info(user_settings)")
     existing_columns = {row[1] for row in cursor.fetchall()}
-    if 'baseGazeSamples' not in existing_columns:
-        cursor.execute(
-            "ALTER TABLE user_settings ADD COLUMN baseGazeSamples INTEGER DEFAULT 60"
+    column_migrations = {
+        "baseGazeSamples": "ALTER TABLE user_settings ADD COLUMN baseGazeSamples INTEGER DEFAULT 60",
+        "translationMode": "ALTER TABLE user_settings ADD COLUMN translationMode TEXT DEFAULT 'word'",
+        "translationOutputMode": "ALTER TABLE user_settings ADD COLUMN translationOutputMode TEXT DEFAULT 'on'",
+        "gazeDetectionMode": "ALTER TABLE user_settings ADD COLUMN gazeDetectionMode TEXT DEFAULT 'circle'",
+        "gazeMappingMode": "ALTER TABLE user_settings ADD COLUMN gazeMappingMode TEXT DEFAULT 'auto'",
+        "gazeYOffsetPx": "ALTER TABLE user_settings ADD COLUMN gazeYOffsetPx INTEGER DEFAULT 8",
+        "gazeXOffsetPx": "ALTER TABLE user_settings ADD COLUMN gazeXOffsetPx INTEGER DEFAULT 0",
+        "gazeHitRadiusPx": "ALTER TABLE user_settings ADD COLUMN gazeHitRadiusPx INTEGER DEFAULT 20",
+    }
+    for column_name, sql in column_migrations.items():
+        if column_name not in existing_columns:
+            cursor.execute(sql)
+            conn.commit()
+
+    cursor.execute(
+        """
+        UPDATE user_settings
+        SET
+          Selected_language = COALESCE(Selected_language, ?),
+          theme = COALESCE(theme, ?),
+          zoomLevel = COALESCE(zoomLevel, ?),
+          baseGazeSamples = COALESCE(baseGazeSamples, ?),
+          translationMode = COALESCE(NULLIF(TRIM(translationMode), ''), ?),
+          translationOutputMode = COALESCE(NULLIF(TRIM(translationOutputMode), ''), ?),
+          gazeDetectionMode = COALESCE(NULLIF(TRIM(gazeDetectionMode), ''), ?),
+          gazeMappingMode = COALESCE(NULLIF(TRIM(gazeMappingMode), ''), ?),
+          gazeYOffsetPx = COALESCE(gazeYOffsetPx, ?),
+          gazeXOffsetPx = COALESCE(gazeXOffsetPx, ?),
+          gazeHitRadiusPx = COALESCE(gazeHitRadiusPx, ?)
+        """,
+        (
+            DEFAULT_SETTINGS_LANGUAGE,
+            DEFAULT_SETTINGS_THEME,
+            DEFAULT_SETTINGS_ZOOM,
+            DEFAULT_BASE_GAZE_SAMPLES,
+            DEFAULT_TRANSLATION_MODE,
+            DEFAULT_TRANSLATION_OUTPUT_MODE,
+            DEFAULT_GAZE_DETECTION_MODE,
+            DEFAULT_GAZE_MAPPING_MODE,
+            DEFAULT_GAZE_Y_OFFSET_PX,
+            DEFAULT_GAZE_X_OFFSET_PX,
+            DEFAULT_GAZE_HIT_RADIUS_PX,
         )
-        conn.commit()
-    if 'translationMode' not in existing_columns:
-        cursor.execute(
-            "ALTER TABLE user_settings ADD COLUMN translationMode TEXT DEFAULT 'word'"
-        )
-        conn.commit()
-    if 'translationOutputMode' not in existing_columns:
-        cursor.execute(
-            "ALTER TABLE user_settings ADD COLUMN translationOutputMode TEXT DEFAULT 'on'"
-        )
-        conn.commit()
+    )
+    conn.commit()
     conn.close()
 
 
@@ -214,10 +265,15 @@ def _settings_row_to_dict(row):
     return {
         "language": row[1],
         "theme": row[2],
-        "zoomLevel": row[3],
-        "baseGazeSamples": row[4] if row[4] is not None else 60,
-        "translationMode": row[5] if row[5] else "word",
-        "translationOutputMode": row[6] if len(row) > 6 and row[6] else "on",
+        "zoomLevel": row[3] if row[3] is not None else DEFAULT_SETTINGS_ZOOM,
+        "baseGazeSamples": row[4] if row[4] is not None else DEFAULT_BASE_GAZE_SAMPLES,
+        "translationMode": row[5] if row[5] else DEFAULT_TRANSLATION_MODE,
+        "translationOutputMode": row[6] if len(row) > 6 and row[6] else DEFAULT_TRANSLATION_OUTPUT_MODE,
+        "gazeDetectionMode": row[7] if len(row) > 7 and row[7] else DEFAULT_GAZE_DETECTION_MODE,
+        "gazeMappingMode": row[8] if len(row) > 8 and row[8] else DEFAULT_GAZE_MAPPING_MODE,
+        "gazeYOffsetPx": row[9] if len(row) > 9 and row[9] is not None else DEFAULT_GAZE_Y_OFFSET_PX,
+        "gazeXOffsetPx": row[10] if len(row) > 10 and row[10] is not None else DEFAULT_GAZE_X_OFFSET_PX,
+        "gazeHitRadiusPx": row[11] if len(row) > 11 and row[11] is not None else DEFAULT_GAZE_HIT_RADIUS_PX,
     }
 
 
@@ -234,7 +290,7 @@ def _get_active_session_id(cursor, user_id):
 
 def _get_db_settings(cursor, user_id):
     cursor.execute(
-        "SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translationOutputMode FROM user_settings WHERE userID = ?",
+        f"SELECT {USER_SETTINGS_SELECT_COLUMNS} FROM user_settings WHERE userID = ?",
         (user_id,)
     )
     return _settings_row_to_dict(cursor.fetchone())
@@ -245,6 +301,78 @@ def _to_int(value):
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _clamp_int(value, *, default, min_value, max_value):
+    parsed = _to_int(value)
+    if parsed is None:
+        return default
+    return max(min_value, min(max_value, parsed))
+
+
+def _normalize_gaze_mapping_mode(value):
+    raw = str(value or "").strip().lower()
+    if raw == "viewport":
+        return "viewport"
+    if raw in ("screenadjusted", "screen_adjusted", "screen-adjusted"):
+        return "screenAdjusted"
+    return DEFAULT_GAZE_MAPPING_MODE
+
+
+def _build_default_user_settings(user_id):
+    return {
+        "userID": user_id,
+        "language": DEFAULT_SETTINGS_LANGUAGE,
+        "theme": DEFAULT_SETTINGS_THEME,
+        "zoomLevel": DEFAULT_SETTINGS_ZOOM,
+        "baseGazeSamples": DEFAULT_BASE_GAZE_SAMPLES,
+        "translationMode": DEFAULT_TRANSLATION_MODE,
+        "translationOutputMode": DEFAULT_TRANSLATION_OUTPUT_MODE,
+        "gazeDetectionMode": DEFAULT_GAZE_DETECTION_MODE,
+        "gazeMappingMode": DEFAULT_GAZE_MAPPING_MODE,
+        "gazeYOffsetPx": DEFAULT_GAZE_Y_OFFSET_PX,
+        "gazeXOffsetPx": DEFAULT_GAZE_X_OFFSET_PX,
+        "gazeHitRadiusPx": DEFAULT_GAZE_HIT_RADIUS_PX,
+    }
+
+
+def _ensure_user_settings_row(cursor, user_id):
+    parsed_user_id = _to_int(user_id)
+    if parsed_user_id is None:
+        return None
+
+    cursor.execute(
+        "SELECT 1 FROM user_settings WHERE userID = ? LIMIT 1",
+        (parsed_user_id,)
+    )
+    if cursor.fetchone():
+        return parsed_user_id
+
+    defaults = _build_default_user_settings(parsed_user_id)
+    cursor.execute(
+        """
+        INSERT INTO user_settings (
+          userID, Selected_language, theme, zoomLevel, baseGazeSamples,
+          translationMode, translationOutputMode, gazeDetectionMode, gazeMappingMode,
+          gazeYOffsetPx, gazeXOffsetPx, gazeHitRadiusPx
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            defaults["userID"],
+            defaults["language"],
+            defaults["theme"],
+            defaults["zoomLevel"],
+            defaults["baseGazeSamples"],
+            defaults["translationMode"],
+            defaults["translationOutputMode"],
+            defaults["gazeDetectionMode"],
+            defaults["gazeMappingMode"],
+            defaults["gazeYOffsetPx"],
+            defaults["gazeXOffsetPx"],
+            defaults["gazeHitRadiusPx"],
+        ),
+    )
+    return parsed_user_id
 
 
 def _is_super_viewer(cursor, user_id):
@@ -1421,10 +1549,9 @@ def create_profile():
     # Insert without userID; SQLite will auto-assign it
     cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)",
                    (username, password))
-    conn.commit()
-
-    # Get the auto-generated userID if needed
     user_id = cursor.lastrowid
+    _ensure_user_settings_row(cursor, user_id)
+    conn.commit()
     conn.close()
 
     return jsonify({'message': 'New user created.', 'userID': user_id}), 200
@@ -1453,6 +1580,8 @@ def login():
         conn.close()
         return jsonify({'message': 'Invalid password.'}), 400
 
+    _ensure_user_settings_row(cursor, user[0])
+    conn.commit()
     active_session_id = _get_active_session_id(cursor, user[0])
     conn.close()
 
@@ -1476,19 +1605,44 @@ def update_settings():
     zoomLevel = data['zoomLevel']
     baseGazeSamples = _to_int(data.get('baseGazeSamples', 60))
     if baseGazeSamples is None:
-        baseGazeSamples = 60
+        baseGazeSamples = DEFAULT_BASE_GAZE_SAMPLES
     baseGazeSamples = max(1, min(1200, baseGazeSamples))
-    translationMode = data.get('translationMode', 'word')
-    translation_output_mode = (data.get('translationOutputMode') or 'on').strip().lower()
+    translationMode = (data.get('translationMode') or DEFAULT_TRANSLATION_MODE).strip().lower()
+    if translationMode not in ('word', 'sentence'):
+        translationMode = DEFAULT_TRANSLATION_MODE
+    translation_output_mode = (data.get('translationOutputMode') or DEFAULT_TRANSLATION_OUTPUT_MODE).strip().lower()
     if translation_output_mode not in ('on', 'off'):
-        translation_output_mode = 'on'
+        translation_output_mode = DEFAULT_TRANSLATION_OUTPUT_MODE
+    gaze_detection_mode = (data.get('gazeDetectionMode') or DEFAULT_GAZE_DETECTION_MODE).strip().lower()
+    if gaze_detection_mode not in ('point', 'circle'):
+        gaze_detection_mode = DEFAULT_GAZE_DETECTION_MODE
+    gaze_mapping_mode = _normalize_gaze_mapping_mode(data.get('gazeMappingMode'))
+    gaze_y_offset_px = _clamp_int(
+        data.get('gazeYOffsetPx'),
+        default=DEFAULT_GAZE_Y_OFFSET_PX,
+        min_value=-200,
+        max_value=200,
+    )
+    gaze_x_offset_px = _clamp_int(
+        data.get('gazeXOffsetPx'),
+        default=DEFAULT_GAZE_X_OFFSET_PX,
+        min_value=-1200,
+        max_value=1200,
+    )
+    gaze_hit_radius_px = _clamp_int(
+        data.get('gazeHitRadiusPx'),
+        default=DEFAULT_GAZE_HIT_RADIUS_PX,
+        min_value=0,
+        max_value=100,
+    )
     sessionID = data.get('sessionID')
 
     conn = sqlite3.connect(sqLiteDatabase)
     cursor = conn.cursor()
+    _ensure_user_settings_row(cursor, userID)
 
     cursor.execute(
-        "SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translationOutputMode FROM user_settings WHERE userID = ?",
+        f"SELECT {USER_SETTINGS_SELECT_COLUMNS} FROM user_settings WHERE userID = ?",
         (userID,)
     )
     user_settings_row = cursor.fetchone()
@@ -1501,6 +1655,11 @@ def update_settings():
         "baseGazeSamples": baseGazeSamples,
         "translationMode": translationMode,
         "translationOutputMode": translation_output_mode,
+        "gazeDetectionMode": gaze_detection_mode,
+        "gazeMappingMode": gaze_mapping_mode,
+        "gazeYOffsetPx": gaze_y_offset_px,
+        "gazeXOffsetPx": gaze_x_offset_px,
+        "gazeHitRadiusPx": gaze_hit_radius_px,
     }
     changed_fields = []
     if old_settings is None:
@@ -1512,11 +1671,53 @@ def update_settings():
         ]
 
     if user_settings_row:
-        cursor.execute("UPDATE user_settings SET Selected_language = ?, theme = ?, zoomLevel = ?, baseGazeSamples = ?, translationMode = ?, translationOutputMode = ? WHERE userID = ?",
-                       (selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translation_output_mode, userID))
+        cursor.execute(
+            """
+            UPDATE user_settings
+            SET Selected_language = ?, theme = ?, zoomLevel = ?, baseGazeSamples = ?,
+                translationMode = ?, translationOutputMode = ?, gazeDetectionMode = ?,
+                gazeMappingMode = ?, gazeYOffsetPx = ?, gazeXOffsetPx = ?, gazeHitRadiusPx = ?
+            WHERE userID = ?
+            """,
+            (
+                selected_language,
+                theme,
+                zoomLevel,
+                baseGazeSamples,
+                translationMode,
+                translation_output_mode,
+                gaze_detection_mode,
+                gaze_mapping_mode,
+                gaze_y_offset_px,
+                gaze_x_offset_px,
+                gaze_hit_radius_px,
+                userID,
+            )
+        )
     else:
-        cursor.execute("INSERT INTO user_settings (userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translationOutputMode) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                       (userID, selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translation_output_mode))
+        cursor.execute(
+            """
+            INSERT INTO user_settings (
+              userID, Selected_language, theme, zoomLevel, baseGazeSamples,
+              translationMode, translationOutputMode, gazeDetectionMode, gazeMappingMode,
+              gazeYOffsetPx, gazeXOffsetPx, gazeHitRadiusPx
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                userID,
+                selected_language,
+                theme,
+                zoomLevel,
+                baseGazeSamples,
+                translationMode,
+                translation_output_mode,
+                gaze_detection_mode,
+                gaze_mapping_mode,
+                gaze_y_offset_px,
+                gaze_x_offset_px,
+                gaze_hit_radius_px,
+            )
+        )
 
     if changed_fields:
         if not sessionID:
@@ -1545,10 +1746,16 @@ def get_user_settings():
     conn = sqlite3.connect(sqLiteDatabase)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-    cursor.execute("SELECT userID, Selected_language, theme, zoomLevel, baseGazeSamples, translationMode, translationOutputMode FROM user_settings WHERE userID = ?", (userID,))
+    _ensure_user_settings_row(cursor, userID)
+    conn.commit()
+    cursor.execute(
+        f"SELECT {USER_SETTINGS_SELECT_COLUMNS} FROM user_settings WHERE userID = ?",
+        (userID,)
+    )
     user_settings = cursor.fetchone()
 
     if not user_settings:
+        conn.close()
         return jsonify({'message': 'No settings found for this userID.'}), 404
 
     # Parsing the fetched data into a dictionary
@@ -1556,11 +1763,17 @@ def get_user_settings():
         "userID": user_settings["userID"],
         "selected_language": user_settings["Selected_language"],
         "theme": user_settings["theme"],
-        "zoomLevel": user_settings["zoomLevel"],
-        "baseGazeSamples": user_settings["baseGazeSamples"] if user_settings["baseGazeSamples"] is not None else 60,
-        "translationMode": user_settings["translationMode"] if user_settings["translationMode"] else "word",
-        "translationOutputMode": user_settings["translationOutputMode"] if user_settings["translationOutputMode"] else "on",
+        "zoomLevel": user_settings["zoomLevel"] if user_settings["zoomLevel"] is not None else DEFAULT_SETTINGS_ZOOM,
+        "baseGazeSamples": user_settings["baseGazeSamples"] if user_settings["baseGazeSamples"] is not None else DEFAULT_BASE_GAZE_SAMPLES,
+        "translationMode": user_settings["translationMode"] if user_settings["translationMode"] else DEFAULT_TRANSLATION_MODE,
+        "translationOutputMode": user_settings["translationOutputMode"] if user_settings["translationOutputMode"] else DEFAULT_TRANSLATION_OUTPUT_MODE,
+        "gazeDetectionMode": user_settings["gazeDetectionMode"] if user_settings["gazeDetectionMode"] else DEFAULT_GAZE_DETECTION_MODE,
+        "gazeMappingMode": _normalize_gaze_mapping_mode(user_settings["gazeMappingMode"]),
+        "gazeYOffsetPx": user_settings["gazeYOffsetPx"] if user_settings["gazeYOffsetPx"] is not None else DEFAULT_GAZE_Y_OFFSET_PX,
+        "gazeXOffsetPx": user_settings["gazeXOffsetPx"] if user_settings["gazeXOffsetPx"] is not None else DEFAULT_GAZE_X_OFFSET_PX,
+        "gazeHitRadiusPx": user_settings["gazeHitRadiusPx"] if user_settings["gazeHitRadiusPx"] is not None else DEFAULT_GAZE_HIT_RADIUS_PX,
     }
+    conn.close()
 
     return jsonify(settings), 200
 
