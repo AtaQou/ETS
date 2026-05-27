@@ -15,7 +15,7 @@ const Profile: React.FC<ProfileProps> = ({ onClick }) => {
 
   const profileContent = (
     <div
-      className={`p-2 absolute rounded text-lg top-[2.5rem] right-0 shadow-lg`}
+      className={`p-2 absolute z-50 rounded text-lg top-[2.5rem] right-0 shadow-lg`}
       style={
         isDarkTheme
           ? {

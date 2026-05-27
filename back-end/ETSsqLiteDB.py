@@ -6,7 +6,7 @@ def initializeDatabase():
 
     c = conn.cursor()
     c.execute('''
-            CREATE TABLE IF NOT EXISTS users
+            CREAcd TE TABLE IF NOT EXISTS users
             ([userID] INTEGER PRIMARY KEY AUTOINCREMENT, [username] TEXT, [password] TEXT)
             ''')
 
@@ -25,7 +25,7 @@ def initializeDatabase():
 
     c.execute('''
             CREATE TABLE IF NOT EXISTS documents
-            ([docID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER, 
+cd back-cd back=            ([docID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER, 
             [docName] TEXT, [docFile] BLOB, [uploadDate] DATETIME, [lastReadPage] INTEGER,
             FOREIGN KEY(userID) REFERENCES users(userID))
             ''')

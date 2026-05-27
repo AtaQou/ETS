@@ -164,7 +164,7 @@ const FileViewer: React.FC = () => {
               pageNumber={index + 1}
               scale={savedZoom}
               renderMode='canvas'
-              renderTextLayer={false}
+              renderTextLayer={true}
               width={elWidth}
             />
           </div>
