@@ -147,6 +147,20 @@ def ensure_experiment_schema():
          [startedAt] DATETIME NOT NULL, [endedAt] DATETIME, [startSettings] TEXT, [endReason] TEXT,
          FOREIGN KEY(userID) REFERENCES users(userID))
     ''')
+    cursor.execute("PRAGMA table_info(user_sessions)")
+    session_columns = {row[1] for row in cursor.fetchall()}
+    if 'splitFromSessionID' not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN splitFromSessionID TEXT")
+        conn.commit()
+    if 'splitSegmentIndex' not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN splitSegmentIndex INTEGER")
+        conn.commit()
+    if 'splitSegmentCount' not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN splitSegmentCount INTEGER")
+        conn.commit()
+    if 'splitNote' not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN splitNote TEXT")
+        conn.commit()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS translation_events
         ([eventID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID] INTEGER NOT NULL, [sessionID] TEXT NOT NULL,
@@ -300,6 +314,53 @@ def _to_int(value):
     try:
         return int(value)
     except (TypeError, ValueError):
+        return None
+
+
+def _replace_datetime_time(datetime_value, time_value):
+    if not datetime_value:
+        return None, "Existing datetime is empty, so its date cannot be preserved."
+
+    raw_datetime = str(datetime_value).strip()
+    raw_time = str(time_value or "").strip()
+    parsed_time = re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?", raw_time)
+    if not parsed_time:
+        return None, "Time must be in HH:MM or HH:MM:SS format."
+
+    normalized_time = f"{parsed_time.group(1)}:{parsed_time.group(2)}:{parsed_time.group(3) or '00'}"
+    date_match = re.match(r"^(\d{4}-\d{2}-\d{2})([T\s])", raw_datetime)
+    if not date_match:
+        return None, "Existing datetime must start with YYYY-MM-DD."
+
+    return f"{date_match.group(1)}T{normalized_time}", None
+
+
+def _normalize_datetime_input(datetime_value):
+    raw_datetime = str(datetime_value or "").strip()
+    parsed_datetime = re.fullmatch(
+        r"(\d{4}-\d{2}-\d{2})[T\s]([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?",
+        raw_datetime,
+    )
+    if not parsed_datetime:
+        return None, "Datetime must be in YYYY-MM-DDTHH:MM or YYYY-MM-DDTHH:MM:SS format."
+
+    normalized_datetime = (
+        f"{parsed_datetime.group(1)}T"
+        f"{parsed_datetime.group(2)}:{parsed_datetime.group(3)}:{parsed_datetime.group(4) or '00'}"
+    )
+    try:
+        datetime.fromisoformat(normalized_datetime)
+    except ValueError:
+        return None, "Datetime is not valid."
+    return normalized_datetime, None
+
+
+def _parse_datetime_value(datetime_value):
+    if not datetime_value:
+        return None
+    try:
+        return datetime.fromisoformat(str(datetime_value).strip().replace(" ", "T"))
+    except ValueError:
         return None
 
 
@@ -1268,6 +1329,8 @@ def get_experiment_sessions():
             SELECT
                 s.sessionID, s.userID, u.username, s.trackerAddress, s.trackerName,
                 s.startedAt, s.endedAt, s.endReason, s.startSettings,
+                s.splitFromSessionID, s.splitSegmentIndex, s.splitSegmentCount, s.splitNote,
+                COALESCE(pdf.docName, '') AS docName,
                 COALESCE(te.translationCount, 0) AS translationCount,
                 COALESCE(sc.settingsChangeCount, 0) AS settingsChangeCount
             FROM user_sessions s
@@ -1277,6 +1340,21 @@ def get_experiment_sessions():
                 FROM translation_events
                 GROUP BY sessionID
             ) te ON te.sessionID = s.sessionID
+            LEFT JOIN (
+                SELECT sessionID, docName
+                FROM (
+                    SELECT
+                        sessionID,
+                        docName,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY sessionID
+                            ORDER BY translatedAt ASC, eventID ASC
+                        ) AS rowRank
+                    FROM translation_events
+                    WHERE docName IS NOT NULL AND TRIM(docName) <> ''
+                )
+                WHERE rowRank = 1
+            ) pdf ON pdf.sessionID = s.sessionID
             LEFT JOIN (
                 SELECT sessionID, COUNT(*) AS settingsChangeCount
                 FROM settings_change_events
@@ -1299,6 +1377,122 @@ def get_experiment_sessions():
         conn.close()
 
     return jsonify(sessions), 200
+
+
+@app.route('/api/experiment/sessions/<session_id>/time', methods=['PATCH'])
+def update_experiment_session_time(session_id):
+    data = request.get_json() or {}
+    requester_user_id = data.get('requesterUserID')
+    started_at = data.get('startedAt')
+    started_time = data.get('startedTime')
+    ended_at = data.get('endedAt')
+    ended_time = data.get('endedTime')
+
+    if started_at is None and started_time is None and ended_at is None and ended_time is None:
+        return jsonify({'message': 'startedAt, startedTime, endedAt or endedTime is required.'}), 400
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        requester_id = _to_int(requester_user_id)
+        if requester_id is None:
+            return jsonify({'message': 'requesterUserID is required.'}), 400
+        if not _is_super_viewer(cursor, requester_id):
+            return jsonify({'message': 'Only Sotiris can edit session times.'}), 403
+
+        cursor.execute(
+            """
+            SELECT
+                s.sessionID, s.userID, u.username, s.trackerAddress, s.trackerName,
+                s.startedAt, s.endedAt, s.endReason, s.startSettings,
+                s.splitFromSessionID, s.splitSegmentIndex, s.splitSegmentCount, s.splitNote,
+                COALESCE(pdf.docName, '') AS docName,
+                COALESCE(te.translationCount, 0) AS translationCount,
+                COALESCE(sc.settingsChangeCount, 0) AS settingsChangeCount
+            FROM user_sessions s
+            LEFT JOIN users u ON u.userID = s.userID
+            LEFT JOIN (
+                SELECT sessionID, COUNT(*) AS translationCount
+                FROM translation_events
+                GROUP BY sessionID
+            ) te ON te.sessionID = s.sessionID
+            LEFT JOIN (
+                SELECT sessionID, docName
+                FROM (
+                    SELECT
+                        sessionID,
+                        docName,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY sessionID
+                            ORDER BY translatedAt ASC, eventID ASC
+                        ) AS rowRank
+                    FROM translation_events
+                    WHERE docName IS NOT NULL AND TRIM(docName) <> ''
+                )
+                WHERE rowRank = 1
+            ) pdf ON pdf.sessionID = s.sessionID
+            LEFT JOIN (
+                SELECT sessionID, COUNT(*) AS settingsChangeCount
+                FROM settings_change_events
+                GROUP BY sessionID
+            ) sc ON sc.sessionID = s.sessionID
+            WHERE s.sessionID = ?
+            """,
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return jsonify({'message': 'Session not found.'}), 404
+
+        current_started_at = row['startedAt']
+        current_ended_at = row['endedAt']
+        next_started_at = current_started_at
+        next_ended_at = current_ended_at
+
+        if started_at is not None:
+            next_started_at, error = _normalize_datetime_input(started_at)
+            if error:
+                return jsonify({'message': f'Invalid start time: {error}'}), 400
+        elif started_time is not None:
+            next_started_at, error = _replace_datetime_time(current_started_at, started_time)
+            if error:
+                return jsonify({'message': f'Invalid start time: {error}'}), 400
+
+        if ended_at is not None or ended_time is not None:
+            if not current_ended_at:
+                return jsonify({'message': 'This session does not have an end time yet.'}), 400
+            if ended_at is not None:
+                next_ended_at, error = _normalize_datetime_input(ended_at)
+            else:
+                next_ended_at, error = _replace_datetime_time(current_ended_at, ended_time)
+            if error:
+                return jsonify({'message': f'Invalid end time: {error}'}), 400
+
+        parsed_started_at = _parse_datetime_value(next_started_at)
+        parsed_ended_at = _parse_datetime_value(next_ended_at)
+        if parsed_started_at and parsed_ended_at and parsed_ended_at < parsed_started_at:
+            return jsonify({'message': 'Session end datetime cannot be before the start datetime.'}), 400
+
+        cursor.execute(
+            "UPDATE user_sessions SET startedAt = ?, endedAt = ? WHERE sessionID = ?",
+            (next_started_at, next_ended_at, session_id)
+        )
+        conn.commit()
+
+        updated_session = dict(row)
+        updated_session['startedAt'] = next_started_at
+        updated_session['endedAt'] = next_ended_at
+        updated_session['startSettings'] = _from_json(updated_session.get('startSettings'))
+    except Exception:
+        conn.rollback()
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to update session time.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify(updated_session), 200
 
 
 @app.route('/api/experiment/users', methods=['GET'])

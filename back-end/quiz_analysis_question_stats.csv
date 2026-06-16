@@ -1,0 +1,67 @@
+docName,level,question,n,mean,median,sd,min,max
+b2_electromagnetic_radiation_2.pdf,b2,What does the author list in the passage?,40,17.5,0.0,38.480764425479265,0.0,100.0
+c2_rosa_parks_2.pdf,c2,What was the direct effect of Rosa Park’s civil disobedience?,46,30.434782608695652,0.0,46.52151338606117,0.0,100.0
+c1_walt_disney_4.pdf,c1,".
+Read these sentences from the text:
+“An important factor ensuring America’s ultimate victory over the Axis Powers in World War II was the overwhelming and unwavering support of the Home Front. Contributing much to creating and maintaining that Home Front support were Walt Disney films.”
+What evidence supports the claim that Walt Disney films helped create and maintain “Home Front support”?",37,32.432432432432435,0.0,47.457899787624946,0.0,100.0
+c2_rosa_parks_2.pdf,c2,"Through the Montgomery Bus Boycott, African-Americans showed they were tired of being treated as inferior to white Americans. What evidence from the passage best supports this conclusion?",46,36.95652173913044,0.0,48.80207487471506,0.0,100.0
+c2_rosa_parks_2.pdf,c2,What was the main reason why President Obama gave this speech?,46,50.0,50.0,50.55250296034367,0.0,100.0
+c1_age_of_exploration_1.pdf,c1,Limited knowledge of world geography was a problem for early exploration. What evidence from the passage supports this conclusion?,35,54.285714285714285,100.0,50.54326709601879,0.0,100.0
+b2_animals_of_rainforests_1.pdf,b2,Tropical rainforests have optimal conditions for many animal species. What evidence from the text supports this conclusion?,36,55.55555555555556,100.0,50.39526306789696,0.0,100.0
+b2_sticky_fingers_4.pdf,b2,What is this passage mostly about?,38,60.526315789473685,100.0,49.535538344028495,0.0,100.0
+b2_first_american_3.pdf,b2,Who were the “founding fathers”?,34,61.76470588235294,100.0,49.32702180563817,0.0,100.0
+c2_noisy_humans_1.pdf,c2,Noise pollution can be harmful to wildlife in protected areas. What evidence from the text supports this conclusion?,46,65.21739130434783,100.0,48.15434123430768,0.0,100.0
+c1_native_american_conflicts_3.pdf,c1,"Read these sentences from the text.
+The consequences of European arrival to North America negatively affected the relationships even between Native American tribes from time to time. Native Americans were suddenly scrambling to share resources with whole new groups of people who had access to powerful weapons, technology to build sturdy buildings, and the ability to call for reinforcements from thousands of miles away.
+Based on this evidence, what conclusion can be drawn?",34,67.6470588235294,100.0,47.485807993381705,0.0,100.0
+c1_bee_reading_2.pdf,c1,"In the article, Kevin Hackett, the national program leader for the bee and pollination program at the U.S. Department of Agriculture (USDA), calls the massive honeybee disappearance “the biggest general threat to our food supply.”
+What evidence from the article supports his claim?",35,68.57142857142857,100.0,47.10082159536055,0.0,100.0
+c1_native_american_conflicts_3.pdf,c1,"Read these sentences from the text.
+The relationships Native American tribes had built with each other became tenuous as the mounting pressure coming from European settlers threatened to destroy their ways of life. This sparked many skirmishes between tribes over hunting land that was becoming more and more scarce as Europeans continued to settle further into the West.
+Based on this evidence, what conclusion can be drawn?",34,70.58823529411765,100.0,46.24972900628803,0.0,100.0
+c2_noisy_humans_1.pdf,c2,What is the main idea of this article?,46,73.91304347826087,100.0,44.39610898213517,0.0,100.0
+c2_rosa_parks_2.pdf,c2,What is this passage mostly about?,46,73.91304347826087,100.0,44.39610898213517,0.0,100.0
+c1_age_of_exploration_1.pdf,c1,The passage lists different navigational instruments available to explorers. Which of the following navigational instruments was not available to Christopher Columbus?,35,74.28571428571429,100.0,44.34395736311599,0.0,100.0
+b2_electromagnetic_radiation_2.pdf,b2,"We can think of electromagnetic waves as a kind of ongoing message being sent out by the universe. Humans are able to naturally access only a portion of this message.
+What information from the passage best supports this statement?",40,77.5,100.0,42.29020617662603,0.0,100.0
+b2_animals_of_rainforests_1.pdf,b2,"Read the following sentences: “Where can you find more animal species than anywhere else in the world? It’s not a zoo or the circus. It’s a very special type of ecosystem called a rainforest, and most can be found in tropical climates in the Southern Hemisphere. […] Despite the biodiversity in the rainforests of the Southern Hemisphere, many species are quickly becoming extinct, as people cut down trees and destroy natural habitats.”
+What does biodiversity mean",36,77.77777777777777,100.0,42.16370213557839,0.0,100.0
+b2_first_american_3.pdf,b2,Benjamin Franklin was opposed to injustice. Which details from the text support this statement?,34,79.41176470588235,100.0,41.04256301219048,0.0,100.0
+b2_electromagnetic_radiation_2.pdf,b2,What allows people to see objects?,40,80.0,100.0,40.50957468334666,0.0,100.0
+b2_electromagnetic_radiation_2.pdf,b2,"Based on the passage, what can be concluded about the ability of humans to see X-rays and gamma rays?",40,80.0,100.0,40.50957468334666,0.0,100.0
+c2_noisy_humans_1.pdf,c2,Where did scientists at Colorado State University and the U.S. National Park Service analyze noise levels for a study?,46,80.43478260869566,100.0,40.10854836782195,0.0,100.0
+c2_rosa_parks_2.pdf,c2,"What did Rosa Parks refuse to do on December 1, 1955?",46,82.6086956521739,100.0,38.32230465168327,0.0,100.0
+b2_animals_of_rainforests_1.pdf,b2,What does the author describe in the passage?,36,83.33333333333333,100.0,37.79644730092272,0.0,100.0
+c1_walt_disney_4.pdf,c1,What is the main idea of this text?,37,83.78378378378379,100.0,37.36838766118223,0.0,100.0
+c1_native_american_conflicts_3.pdf,c1,What argument does the author develop in this text?,34,85.29411764705883,100.0,35.949062795357094,0.0,100.0
+b2_animals_of_rainforests_1.pdf,b2,Why do rainforests have some of the most diverse plant and animal life on earth?,36,86.11111111111111,100.0,35.073618720610085,0.0,100.0
+c1_walt_disney_4.pdf,c1,What did the Disney Studios support during World War II?,37,86.48648648648648,100.0,34.65834966066909,0.0,100.0
+c2_noisy_humans_1.pdf,c2,How might the noise that humans make be affecting humans?,46,86.95652173913044,100.0,34.05026123034994,0.0,100.0
+c1_bee_reading_2.pdf,c1,What is this article mostly about?,35,88.57142857142857,100.0,32.28028510906756,0.0,100.0
+c1_walt_disney_4.pdf,c1,"Read this paragraph from the text:
+“During World War I, while serving as a Red Cross ambulance driver, Walt Disney embellished his ambulance and other vehicles with drawings and cartoon figures. Thus, he came to appreciate the importance of humorous insignia to unit morale and espritde-
+corps. It is not surprising, therefore, that during World War II Disney artists often used their talents to design military insignia and emblems.”
+Based on this information, what can you infer about the effect of the insignia and emblems designed by Disney artists during World War II?",37,89.1891891891892,100.0,31.480009386767833,0.0,100.0
+c1_native_american_conflicts_3.pdf,c1,Why did the Europeans come to North America?,34,91.17647058823529,100.0,28.790224128123658,0.0,100.0
+b2_animals_of_rainforests_1.pdf,b2,What is this passage mainly about?,36,91.66666666666667,100.0,28.030595529069405,0.0,100.0
+c1_walt_disney_4.pdf,c1,What does the author describe in the article?,37,91.89189189189189,100.0,27.672473069203008,0.0,100.0
+b2_sticky_fingers_4.pdf,b2,The problem explained in the passage is that cocoa farmers worked in poor conditions for very low pay. What was the solution?,38,92.10526315789474,100.0,27.32763127330939,0.0,100.0
+b2_sticky_fingers_4.pdf,b2,Some cocoa farms use unethical methods to harvest cocoa. What evidence from the passage best supports this conclusion?,38,92.10526315789474,100.0,27.32763127330939,0.0,100.0
+b2_electromagnetic_radiation_2.pdf,b2,What is the passage mainly about?,40,92.5,100.0,26.67467828369185,0.0,100.0
+c2_noisy_humans_1.pdf,c2,The levels of noise in many protected areas has been raised above the level of background noise. What is one cause of this increased noise the text describes?,46,93.47826086956522,100.0,24.9637418228338,0.0,100.0
+c1_age_of_exploration_1.pdf,c1,How did navigational tools change from the 15th century to the 17th century?,35,94.28571428571429,100.0,23.55041079768028,0.0,100.0
+c1_bee_reading_2.pdf,c1,"Experts think that pesticides, parasites and diseases, as well as land development and changes in agricultural practices around the world, are some possible causes of bee death.
+According to this article, what is the most important effect of this new bee shortage?",35,94.28571428571429,100.0,23.55041079768028,0.0,100.0
+c1_bee_reading_2.pdf,c1,"Leaders from the U.S. Department of Agriculture (USDA), researchers from the National Academy of Sciences, and the USDA and Environmental Protection Agency (EPA) are all reported to be working hard to understand and solve the problem of the disappearance of honeybees.
+Based on this evidence, what can be concluded about the organizations trying to solve this problem?",35,94.28571428571429,100.0,23.55041079768028,0.0,100.0
+b2_sticky_fingers_4.pdf,b2,"Read the following sentences: “As people involved in the global trade of cocoa began to find out about the slavery, child exploitation, and unsafe conditions on cocoa farms, they started to demand change.” Based on this information, what conclusion can you make?",38,94.73684210526316,100.0,22.629428592141423,0.0,100.0
+b2_first_american_3.pdf,b2,Benjamin Franklin was elected the Speaker of the Pennsylvania House and selected to represent Pennsylvania in the “Second Continental Congress.” What conclusion can be made about Benjamin Franklin?,34,97.05882352941177,100.0,17.149858514250884,0.0,100.0
+c1_native_american_conflicts_3.pdf,c1,What is the main idea of this text?,34,97.05882352941177,100.0,17.149858514250884,0.0,100.0
+c1_age_of_exploration_1.pdf,c1,"According to the passage, what was historically one of the most efficient ways to navigate the world?",35,97.14285714285714,100.0,16.903085094570333,0.0,100.0
+b2_animals_of_rainforests_1.pdf,b2,In which ecosystem can you find more animal species than anywhere else in the world?,36,100.0,100.0,0.0,100.0,100.0
+b2_first_american_3.pdf,b2,What does the author describe in the passage?,34,100.0,100.0,0.0,100.0,100.0
+b2_first_american_3.pdf,b2,What is this passage mostly about?,34,100.0,100.0,0.0,100.0,100.0
+b2_sticky_fingers_4.pdf,b2,Which ingredient makes a chocolate bar taste chocolaty?,38,100.0,100.0,0.0,100.0,100.0
+c1_age_of_exploration_1.pdf,c1,What is this passage mostly about?,35,100.0,100.0,0.0,100.0,100.0
+c1_bee_reading_2.pdf,c1,What problem does this article mainly discuss?,35,100.0,100.0,0.0,100.0,100.0
