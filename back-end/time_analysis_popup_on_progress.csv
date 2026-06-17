@@ -1,0 +1,52 @@
+username,popup_on_sessions,first2_on_wpm,last2_on_wpm,wpm_change,first2_on_minutes,last2_on_minutes,interpretation
+1059657,4,132.21,110.08,-22.12,5.14,6.20,slower; duration change 1.06 min
+1065023,4,125.24,164.31,39.07,3.96,4.13,improved; duration change 0.17 min
+1070729,4,134.28,136.54,2.26,4.17,5.05,stable; duration change 0.88 min
+1080401,4,93.41,79.64,-13.77,6.36,8.69,slower; duration change 2.33 min
+1084609,4,139.86,162.27,22.41,4.31,3.83,improved; duration change -0.48 min
+1090053,4,119.03,143.69,24.66,4.54,3.81,improved; duration change -0.73 min
+1093313,3,-,-,-,-,-,not enough popup-on sessions
+1093322,2,-,-,-,-,-,not enough popup-on sessions
+1093332,4,83.25,129.47,46.22,7.94,5.56,improved; duration change -2.38 min
+1093348,4,104.87,124.79,19.92,5.18,5.09,improved; duration change -0.09 min
+1093379,4,78.38,99.43,21.05,8.43,6.07,improved; duration change -2.35 min
+1093390,4,116.12,112.22,-3.89,5.71,5.34,stable; duration change -0.36 min
+1093403,4,137.76,209.13,71.37,5.01,3.36,improved; duration change -1.65 min
+1093413,4,142.17,156.84,14.67,4.76,4.51,improved; duration change -0.25 min
+1093505,4,183.61,126.65,-56.96,3.67,3.84,slower; duration change 0.18 min
+1093515,3,-,-,-,-,-,not enough popup-on sessions
+1095564,4,226.17,208.37,-17.80,3.10,2.75,slower; duration change -0.35 min
+1097463,4,162.68,160.20,-2.48,3.44,3.74,stable; duration change 0.30 min
+1100496,4,151.01,125.35,-25.66,4.61,4.40,slower; duration change -0.21 min
+1100497,4,110.18,151.50,41.31,4.62,4.08,improved; duration change -0.55 min
+1100613,4,133.27,116.58,-16.69,3.83,5.67,slower; duration change 1.83 min
+1100663,4,123.95,144.58,20.64,4.55,4.43,improved; duration change -0.12 min
+1100758,4,108.12,135.19,27.06,5.21,4.22,improved; duration change -0.99 min
+1103080,3,-,-,-,-,-,not enough popup-on sessions
+1104782,4,111.80,87.37,-24.43,6.27,7.44,slower; duration change 1.17 min
+1104806,4,126.25,103.76,-22.49,5.21,6.58,slower; duration change 1.37 min
+1104816,4,125.91,137.28,11.37,5.68,3.99,improved; duration change -1.69 min
+1104818,4,168.63,190.67,22.04,4.20,3.64,improved; duration change -0.56 min
+1108323,4,145.10,179.47,34.36,4.48,3.92,improved; duration change -0.57 min
+1108328,3,-,-,-,-,-,not enough popup-on sessions
+1108330,3,-,-,-,-,-,not enough popup-on sessions
+1108335,4,150.61,95.36,-55.25,3.85,7.40,slower; duration change 3.55 min
+1108339,3,-,-,-,-,-,not enough popup-on sessions
+1108344,4,154.59,164.90,10.30,4.43,3.76,improved; duration change -0.66 min
+1108346,4,151.79,183.77,31.99,3.65,3.47,improved; duration change -0.18 min
+1108348,4,92.76,127.26,34.50,5.85,4.42,improved; duration change -1.43 min
+1108349,4,237.81,232.50,-5.31,2.96,2.55,slower; duration change -0.42 min
+1108353,1,-,-,-,-,-,not enough popup-on sessions
+1108357,4,122.93,112.92,-10.01,3.80,5.90,slower; duration change 2.10 min
+1108360,5,152.99,273.90,120.91,3.93,1.86,improved; duration change -2.06 min
+1108364,4,102.46,118.32,15.85,5.67,6.19,improved; duration change 0.51 min
+1108365,4,190.83,228.39,37.56,3.71,2.99,improved; duration change -0.72 min
+1108367,4,204.64,187.58,-17.06,2.90,3.99,slower; duration change 1.09 min
+1108382,4,119.34,125.90,6.56,5.80,5.35,improved; duration change -0.45 min
+1108387,3,-,-,-,-,-,not enough popup-on sessions
+1112096,3,-,-,-,-,-,not enough popup-on sessions
+1112106,3,-,-,-,-,-,not enough popup-on sessions
+1112115,4,178.60,153.33,-25.26,3.20,4.05,slower; duration change 0.85 min
+1112119c,3,-,-,-,-,-,not enough popup-on sessions
+1112121,4,213.99,211.72,-2.27,2.45,2.95,stable; duration change 0.50 min
+1112139,4,83.65,184.97,101.32,8.41,3.08,improved; duration change -5.33 min

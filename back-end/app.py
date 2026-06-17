@@ -145,6 +145,7 @@ def ensure_experiment_schema():
         CREATE TABLE IF NOT EXISTS user_sessions
         ([sessionID] TEXT PRIMARY KEY, [userID] INTEGER NOT NULL, [trackerAddress] TEXT, [trackerName] TEXT,
          [startedAt] DATETIME NOT NULL, [endedAt] DATETIME, [startSettings] TEXT, [endReason] TEXT,
+         [isHidden] INTEGER NOT NULL DEFAULT 0, [hiddenAt] DATETIME, [hiddenByUserID] INTEGER, [hiddenReason] TEXT,
          FOREIGN KEY(userID) REFERENCES users(userID))
     ''')
     cursor.execute("PRAGMA table_info(user_sessions)")
@@ -160,6 +161,18 @@ def ensure_experiment_schema():
         conn.commit()
     if 'splitNote' not in session_columns:
         cursor.execute("ALTER TABLE user_sessions ADD COLUMN splitNote TEXT")
+        conn.commit()
+    if 'isHidden' not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+    if 'hiddenAt' not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN hiddenAt DATETIME")
+        conn.commit()
+    if 'hiddenByUserID' not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN hiddenByUserID INTEGER")
+        conn.commit()
+    if 'hiddenReason' not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN hiddenReason TEXT")
         conn.commit()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS translation_events
@@ -1312,12 +1325,13 @@ def get_vocabulary():
 def get_experiment_sessions():
     requested_user_id = request.args.get('userID')
     requester_user_id = request.args.get('requesterUserID')
+    include_hidden = str(request.args.get('includeHidden', '')).strip().lower() in ('1', 'true', 'yes')
     conn = sqlite3.connect(sqLiteDatabase)
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     try:
-        requester_id, effective_user_id, _can_view_all = _resolve_requested_user_scope(
+        requester_id, effective_user_id, can_view_all = _resolve_requested_user_scope(
             cursor,
             requester_user_id,
             requested_user_id
@@ -1330,6 +1344,7 @@ def get_experiment_sessions():
                 s.sessionID, s.userID, u.username, s.trackerAddress, s.trackerName,
                 s.startedAt, s.endedAt, s.endReason, s.startSettings,
                 s.splitFromSessionID, s.splitSegmentIndex, s.splitSegmentCount, s.splitNote,
+                COALESCE(s.isHidden, 0) AS isHidden, s.hiddenAt, s.hiddenByUserID, s.hiddenReason,
                 COALESCE(pdf.docName, '') AS docName,
                 COALESCE(te.translationCount, 0) AS translationCount,
                 COALESCE(sc.settingsChangeCount, 0) AS settingsChangeCount
@@ -1362,9 +1377,14 @@ def get_experiment_sessions():
             ) sc ON sc.sessionID = s.sessionID
         """
         params = []
+        where_clauses = []
         if effective_user_id is not None:
-            query += " WHERE s.userID = ?"
+            where_clauses.append("s.userID = ?")
             params.append(effective_user_id)
+        if not (include_hidden and can_view_all):
+            where_clauses.append("COALESCE(s.isHidden, 0) = 0")
+        if where_clauses:
+            query += " WHERE " + " AND ".join(where_clauses)
         query += " ORDER BY s.startedAt DESC"
         cursor.execute(query, params)
         sessions = [dict(row) for row in cursor.fetchall()]
@@ -1408,6 +1428,7 @@ def update_experiment_session_time(session_id):
                 s.sessionID, s.userID, u.username, s.trackerAddress, s.trackerName,
                 s.startedAt, s.endedAt, s.endReason, s.startSettings,
                 s.splitFromSessionID, s.splitSegmentIndex, s.splitSegmentCount, s.splitNote,
+                COALESCE(s.isHidden, 0) AS isHidden, s.hiddenAt, s.hiddenByUserID, s.hiddenReason,
                 COALESCE(pdf.docName, '') AS docName,
                 COALESCE(te.translationCount, 0) AS translationCount,
                 COALESCE(sc.settingsChangeCount, 0) AS settingsChangeCount
@@ -1495,6 +1516,117 @@ def update_experiment_session_time(session_id):
     return jsonify(updated_session), 200
 
 
+@app.route('/api/experiment/sessions/<session_id>/hidden', methods=['PATCH'])
+def update_experiment_session_hidden(session_id):
+    data = request.get_json(silent=True) or {}
+    requester_user_id = data.get('requesterUserID') or request.args.get('requesterUserID')
+    raw_hidden = data.get('hidden', True)
+    if isinstance(raw_hidden, str):
+        should_hide = raw_hidden.strip().lower() in ('1', 'true', 'yes', 'on')
+    else:
+        should_hide = bool(raw_hidden)
+    hidden_reason = str(data.get('hiddenReason') or '').strip() or None
+
+    conn = sqlite3.connect(sqLiteDatabase)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    try:
+        requester_id = _to_int(requester_user_id)
+        if requester_id is None:
+            return jsonify({'message': 'requesterUserID is required.'}), 400
+        if not _is_super_viewer(cursor, requester_id):
+            return jsonify({'message': 'Only Sotiris can hide or restore sessions.'}), 403
+
+        cursor.execute(
+            """
+            SELECT
+                s.sessionID, s.userID, u.username, s.trackerAddress, s.trackerName,
+                s.startedAt, s.endedAt, s.endReason, s.startSettings,
+                s.splitFromSessionID, s.splitSegmentIndex, s.splitSegmentCount, s.splitNote,
+                COALESCE(s.isHidden, 0) AS isHidden, s.hiddenAt, s.hiddenByUserID, s.hiddenReason,
+                COALESCE(pdf.docName, '') AS docName,
+                COALESCE(te.translationCount, 0) AS translationCount,
+                COALESCE(sc.settingsChangeCount, 0) AS settingsChangeCount
+            FROM user_sessions s
+            LEFT JOIN users u ON u.userID = s.userID
+            LEFT JOIN (
+                SELECT sessionID, COUNT(*) AS translationCount
+                FROM translation_events
+                GROUP BY sessionID
+            ) te ON te.sessionID = s.sessionID
+            LEFT JOIN (
+                SELECT sessionID, docName
+                FROM (
+                    SELECT
+                        sessionID,
+                        docName,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY sessionID
+                            ORDER BY translatedAt ASC, eventID ASC
+                        ) AS rowRank
+                    FROM translation_events
+                    WHERE docName IS NOT NULL AND TRIM(docName) <> ''
+                )
+                WHERE rowRank = 1
+            ) pdf ON pdf.sessionID = s.sessionID
+            LEFT JOIN (
+                SELECT sessionID, COUNT(*) AS settingsChangeCount
+                FROM settings_change_events
+                GROUP BY sessionID
+            ) sc ON sc.sessionID = s.sessionID
+            WHERE s.sessionID = ?
+            """,
+            (session_id,)
+        )
+        session = cursor.fetchone()
+        if not session:
+            return jsonify({'message': 'Session not found.'}), 404
+
+        if should_hide and not session['endedAt']:
+            return jsonify({'message': 'This session is still active. End it before hiding it.'}), 400
+
+        if should_hide:
+            hidden_at = _now_iso()
+            cursor.execute(
+                """
+                UPDATE user_sessions
+                SET isHidden = 1, hiddenAt = ?, hiddenByUserID = ?, hiddenReason = ?
+                WHERE sessionID = ?
+                """,
+                (hidden_at, requester_id, hidden_reason, session_id)
+            )
+        else:
+            hidden_at = None
+            cursor.execute(
+                """
+                UPDATE user_sessions
+                SET isHidden = 0, hiddenAt = NULL, hiddenByUserID = NULL, hiddenReason = NULL
+                WHERE sessionID = ?
+                """,
+                (session_id,)
+            )
+        conn.commit()
+
+        updated_session = dict(session)
+        updated_session['isHidden'] = 1 if should_hide else 0
+        updated_session['hiddenAt'] = hidden_at
+        updated_session['hiddenByUserID'] = requester_id if should_hide else None
+        updated_session['hiddenReason'] = hidden_reason if should_hide else None
+        updated_session['startSettings'] = _from_json(updated_session.get('startSettings'))
+    except Exception:
+        conn.rollback()
+        print(traceback.format_exc())
+        return jsonify({'message': 'Unable to update session hidden status.'}), 500
+    finally:
+        conn.close()
+
+    return jsonify({
+        'message': 'Session hidden.' if should_hide else 'Session restored.',
+        'session': updated_session,
+    }), 200
+
+
 @app.route('/api/experiment/users', methods=['GET'])
 def get_experiment_users():
     requester_user_id = request.args.get('requesterUserID')
@@ -1521,12 +1653,15 @@ def get_experiment_users():
             LEFT JOIN (
                 SELECT userID, COUNT(*) AS sessionCount
                 FROM user_sessions
+                WHERE COALESCE(isHidden, 0) = 0
                 GROUP BY userID
             ) s ON s.userID = u.userID
             LEFT JOIN (
-                SELECT userID, COUNT(*) AS translationCount
-                FROM translation_events
-                GROUP BY userID
+                SELECT e.userID, COUNT(*) AS translationCount
+                FROM translation_events e
+                JOIN user_sessions s ON s.sessionID = e.sessionID
+                WHERE COALESCE(s.isHidden, 0) = 0
+                GROUP BY e.userID
             ) t ON t.userID = u.userID
         """
         params = []

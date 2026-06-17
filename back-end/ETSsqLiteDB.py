@@ -34,6 +34,7 @@ cd back-cd back=            ([docID] INTEGER PRIMARY KEY AUTOINCREMENT, [userID]
             CREATE TABLE IF NOT EXISTS user_sessions
             ([sessionID] TEXT PRIMARY KEY, [userID] INTEGER, [trackerAddress] TEXT, [trackerName] TEXT,
             [startedAt] DATETIME, [endedAt] DATETIME, [startSettings] TEXT, [endReason] TEXT,
+            [isHidden] INTEGER DEFAULT 0, [hiddenAt] DATETIME, [hiddenByUserID] INTEGER, [hiddenReason] TEXT,
             FOREIGN KEY(userID) REFERENCES users(userID))
             ''')
 

@@ -32,6 +32,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Output directory for CSV files. Defaults to back-end/experiment_reports/<timestamp>.",
     )
+    parser.add_argument(
+        "--include-hidden",
+        action="store_true",
+        help="Include sessions marked as hidden. By default hidden sessions are excluded from exports.",
+    )
     return parser.parse_args()
 
 
@@ -69,9 +74,20 @@ def ensure_tables(conn: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS user_sessions
         ([sessionID] TEXT PRIMARY KEY, [userID] INTEGER NOT NULL, [trackerAddress] TEXT, [trackerName] TEXT,
-         [startedAt] DATETIME NOT NULL, [endedAt] DATETIME, [startSettings] TEXT, [endReason] TEXT)
+         [startedAt] DATETIME NOT NULL, [endedAt] DATETIME, [startSettings] TEXT, [endReason] TEXT,
+         [isHidden] INTEGER NOT NULL DEFAULT 0, [hiddenAt] DATETIME, [hiddenByUserID] INTEGER, [hiddenReason] TEXT)
         """
     )
+    cursor.execute("PRAGMA table_info(user_sessions)")
+    session_columns = {row[1] for row in cursor.fetchall()}
+    if "isHidden" not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0")
+    if "hiddenAt" not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN hiddenAt DATETIME")
+    if "hiddenByUserID" not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN hiddenByUserID INTEGER")
+    if "hiddenReason" not in session_columns:
+        cursor.execute("ALTER TABLE user_sessions ADD COLUMN hiddenReason TEXT")
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS translation_events
@@ -118,7 +134,7 @@ def build_output_dir(args: argparse.Namespace) -> Path:
 
 
 def export_data(
-    db_path: str, out_dir: Path, user_id: int | None, session_id: str | None
+    db_path: str, out_dir: Path, user_id: int | None, session_id: str | None, include_hidden: bool
 ) -> dict[str, int]:
     params: list[Any] = []
     where_events = ["1 = 1"]
@@ -138,6 +154,10 @@ def export_data(
         event_params.append(session_id)
         session_params.append(session_id)
 
+    if not include_hidden:
+        where_events.append("COALESCE(s.isHidden, 0) = 0")
+        where_sessions.append("COALESCE(s.isHidden, 0) = 0")
+
     where_events_sql = " AND ".join(where_events)
     where_sessions_sql = " AND ".join(where_sessions)
 
@@ -149,6 +169,7 @@ def export_data(
             SELECT
                 s.sessionID, s.userID, u.username, s.trackerAddress, s.trackerName,
                 s.startedAt, s.endedAt, s.endReason, s.startSettings,
+                COALESCE(s.isHidden, 0) AS isHidden, s.hiddenAt, s.hiddenByUserID, s.hiddenReason,
                 COALESCE(te.translationCount, 0) AS translationCount,
                 COALESCE(sc.settingsChangeCount, 0) AS settingsChangeCount
             FROM user_sessions s
@@ -177,6 +198,7 @@ def export_data(
                 e.translationMode, e.provider, e.translatedAt, e.settingsSnapshot
             FROM translation_events e
             LEFT JOIN users u ON u.userID = e.userID
+            LEFT JOIN user_sessions s ON s.sessionID = e.sessionID
             WHERE {where_events_sql}
             ORDER BY e.translatedAt DESC
         """
@@ -190,6 +212,7 @@ def export_data(
                 c.oldSettings, c.newSettings, c.changedAt
             FROM settings_change_events c
             LEFT JOIN users u ON u.userID = c.userID
+            LEFT JOIN user_sessions s ON s.sessionID = c.sessionID
             WHERE {" AND ".join(where_events).replace("e.", "c.")}
             ORDER BY c.changedAt DESC
         """
@@ -207,6 +230,7 @@ def export_data(
                 ts.translationMode, ts.usageCount, ts.lastTranslation, ts.lastTranslatedAt
             FROM translation_stats ts
             LEFT JOIN users u ON u.userID = ts.userID
+            LEFT JOIN user_sessions s ON s.sessionID = ts.sessionID
             WHERE {" AND ".join(where_events).replace("e.", "ts.")}
             ORDER BY ts.lastTranslatedAt DESC
         """
@@ -227,6 +251,10 @@ def export_data(
             "endedAt",
             "endReason",
             "startSettings",
+            "isHidden",
+            "hiddenAt",
+            "hiddenByUserID",
+            "hiddenReason",
             "translationCount",
             "settingsChangeCount",
         ],
@@ -292,7 +320,7 @@ def export_data(
 def main() -> None:
     args = parse_args()
     out_dir = build_output_dir(args)
-    counts = export_data(args.db_path, out_dir, args.user_id, args.session_id)
+    counts = export_data(args.db_path, out_dir, args.user_id, args.session_id, args.include_hidden)
 
     print(f"Export completed: {out_dir}")
     print(f"sessions.csv rows: {counts['sessions']}")

@@ -329,11 +329,29 @@ def score_columns(headers: list[str]) -> list[str]:
     return cols
 
 
+def ensure_analysis_schema(conn: sqlite3.Connection) -> None:
+    session_columns = {row["name"] for row in conn.execute("PRAGMA table_info(user_sessions)").fetchall()}
+    if "isHidden" not in session_columns:
+        conn.execute("ALTER TABLE user_sessions ADD COLUMN isHidden INTEGER NOT NULL DEFAULT 0")
+    if "hiddenAt" not in session_columns:
+        conn.execute("ALTER TABLE user_sessions ADD COLUMN hiddenAt DATETIME")
+    if "hiddenByUserID" not in session_columns:
+        conn.execute("ALTER TABLE user_sessions ADD COLUMN hiddenByUserID INTEGER")
+    if "hiddenReason" not in session_columns:
+        conn.execute("ALTER TABLE user_sessions ADD COLUMN hiddenReason TEXT")
+    conn.commit()
+
+
 def get_db_users(conn: sqlite3.Connection) -> tuple[dict[str, int], set[str], set[str]]:
     rows = conn.execute("SELECT userID, username FROM users").fetchall()
     username_to_id = {str(r["username"]): r["userID"] for r in rows}
     session_rows = conn.execute(
-        "SELECT DISTINCT u.username FROM users u JOIN user_sessions s ON s.userID = u.userID"
+        """
+        SELECT DISTINCT u.username
+        FROM users u
+        JOIN user_sessions s ON s.userID = u.userID
+        WHERE COALESCE(s.isHidden, 0) = 0
+        """
     ).fetchall()
     session_usernames = {str(r["username"]) for r in session_rows}
     return username_to_id, set(username_to_id), session_usernames
@@ -353,21 +371,28 @@ def load_sessions(conn: sqlite3.Connection) -> tuple[list[dict[str, object]], di
         FROM user_sessions s
         JOIN users u ON u.userID = s.userID
         JOIN translation_events e ON e.sessionID = s.sessionID
-        WHERE lower(e.docName) GLOB 'b2_*'
-           OR lower(e.docName) GLOB 'c1_*'
-           OR lower(e.docName) GLOB 'c2_*'
+        WHERE COALESCE(s.isHidden, 0) = 0
+          AND (
+            lower(e.docName) GLOB 'b2_*'
+            OR lower(e.docName) GLOB 'c1_*'
+            OR lower(e.docName) GLOB 'c2_*'
+          )
         GROUP BY s.sessionID, e.docID, e.docName
         """
     ).fetchall()
 
     gap_rows = conn.execute(
         """
-        SELECT sessionID, docName, translatedAt, COALESCE(translationOutputMode, 'on') AS outputMode
-        FROM translation_events
-        WHERE lower(docName) GLOB 'b2_*'
-           OR lower(docName) GLOB 'c1_*'
-           OR lower(docName) GLOB 'c2_*'
-        ORDER BY sessionID, docName, translatedAt, eventID
+        SELECT e.sessionID, e.docName, e.translatedAt, COALESCE(e.translationOutputMode, 'on') AS outputMode
+        FROM translation_events e
+        JOIN user_sessions s ON s.sessionID = e.sessionID
+        WHERE COALESCE(s.isHidden, 0) = 0
+          AND (
+            lower(e.docName) GLOB 'b2_*'
+            OR lower(e.docName) GLOB 'c1_*'
+            OR lower(e.docName) GLOB 'c2_*'
+          )
+        ORDER BY e.sessionID, e.docName, e.translatedAt, e.eventID
         """
     ).fetchall()
     gaps: dict[tuple[str, str], float] = defaultdict(float)
@@ -452,6 +477,7 @@ def load_all_session_summaries(conn: sqlite3.Connection) -> list[dict[str, objec
         FROM user_sessions s
         JOIN users u ON u.userID = s.userID
         LEFT JOIN translation_events e ON e.sessionID = s.sessionID
+        WHERE COALESCE(s.isHidden, 0) = 0
         GROUP BY s.sessionID
         ORDER BY u.username, s.startedAt
         """
@@ -1613,6 +1639,7 @@ def render_report(
 def main() -> int:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    ensure_analysis_schema(conn)
     username_to_id, all_usernames, session_usernames = get_db_users(conn)
     sessions, sessions_by_key = load_sessions(conn)
     all_session_summaries = load_all_session_summaries(conn)
