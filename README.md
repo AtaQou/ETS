@@ -20,14 +20,15 @@ This repository is the software and analysis workspace for a Diploma Thesis at t
 
 ```mermaid
 flowchart LR
-    A[Tobii eye tracker] --> B[ETSDVM WebSocket service<br/>localhost:5001]
-    B --> C[React reader<br/>localhost:3000]
-    D[PDF document] --> E[Flask API and OCR<br/>localhost:5000]
+    A[Tobii eye tracker] --> B["ETSDVM WebSocket service (localhost:5001)"]
+    B --> C["React reader (localhost:3000)"]
+    D[PDF document] --> E["Flask API and OCR (localhost:5000)"]
     E --> C
     C --> F[Gaze-to-word matching]
     F --> E
     E --> G[DeepL translation API]
-    E <--> H[(SQLite database)]
+    E --> H[(SQLite database)]
+    H --> E
     H --> I[Analysis scripts and research outputs]
 ```
 
