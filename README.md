@@ -176,6 +176,6 @@ The backend can also be built from `back-end/Dockerfile`, although live Tobii di
 
 ## Research and citation status
 
-This is a Diploma Thesis project and the basis of planned publication work. No paper citation is available in the repository yet. If a paper, DOI, or institutional thesis record is published, add its bibliographic entry here so that users can cite the research accurately.
+This repository contains my Diploma Thesis project and forms the basis for planned publications. There is no paper, DOI, or institutional thesis record to cite yet. If one becomes available, I will add the full citation here so you can reference the research accurately.
 
-No license file is currently included. Unless a license is added, the repository's source and data remain protected by the default copyright rules.
+I have not added a license to this repository. The source code and data are therefore covered by default copyright rules. If you would like to reuse or distribute them, please contact me to discuss permission.
